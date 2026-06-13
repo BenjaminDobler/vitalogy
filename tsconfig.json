@@ -41,6 +41,18 @@
     },
     {
       "path": "./apps/web"
+    },
+    {
+      "path": "./libs/mobile/feature-record"
+    },
+    {
+      "path": "./libs/mobile/recording"
+    },
+    {
+      "path": "./libs/mobile/ble"
+    },
+    {
+      "path": "./apps/mobile"
     }
   ]
 }

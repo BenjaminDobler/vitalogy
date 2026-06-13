@@ -1,0 +1,13 @@
+{
+  "name": "ble",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/mobile/ble/src",
+  "prefix": "lib",
+  "projectType": "library",
+  "tags": ["scope:mobile", "type:data-access"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

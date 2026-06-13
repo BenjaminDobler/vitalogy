@@ -1,0 +1,151 @@
+import { computed, inject, Injectable, signal } from '@angular/core';
+import { BleManager, BleReading, CscReading, HrmReading } from 'ble';
+import { Subscription } from 'rxjs';
+import {
+  LiveStats,
+  RecordingSample,
+  RecordingSession,
+} from './recording-types';
+
+/**
+ * Orchestrates a single recording session:
+ *  - subscribes to BleManager.readings$
+ *  - merges them into a sample-per-second timeline (low-rate UI updates,
+ *    high-rate raw log)
+ *  - exposes live signals for the UI and a stats computed signal
+ *  - on stop, returns the session object ready for local persistence / upload
+ */
+@Injectable({ providedIn: 'root' })
+export class RecordingService {
+  private readonly ble = inject(BleManager);
+
+  readonly session = signal<RecordingSession | null>(null);
+  /** Most recent merged sample — used for live tile rendering. */
+  readonly latest = signal<RecordingSample | null>(null);
+
+  readonly stats = computed<LiveStats | null>(() => {
+    const s = this.session();
+    if (!s) return null;
+    return computeStats(s.samples, this.now() - s.startedAt);
+  });
+
+  /** Wall-clock tick (1 Hz) used so duration updates in the UI without new samples. */
+  private readonly now = signal(Date.now());
+  private tickHandle?: ReturnType<typeof setInterval>;
+  private subscription?: Subscription;
+
+  /** Partial sample accumulator — gets reset every push. */
+  private partial: Omit<RecordingSample, 't'> = {};
+  private lastFlushT = 0;
+  private readonly flushIntervalMs = 1000;
+
+  start(): RecordingSession {
+    if (this.session()) {
+      throw new Error('Recording already in progress');
+    }
+    const now = Date.now();
+    const session: RecordingSession = {
+      id: crypto.randomUUID(),
+      startedAt: now,
+      samples: [],
+    };
+    this.session.set(session);
+    this.latest.set(null);
+    this.partial = {};
+    this.lastFlushT = 0;
+
+    this.subscription = this.ble.readings$.subscribe((r) => this.ingest(r));
+    this.tickHandle = setInterval(() => this.now.set(Date.now()), 1000);
+    return session;
+  }
+
+  stop(): RecordingSession | null {
+    const s = this.session();
+    if (!s) return null;
+    this.subscription?.unsubscribe();
+    this.subscription = undefined;
+    if (this.tickHandle) clearInterval(this.tickHandle);
+    this.tickHandle = undefined;
+    // Flush the last partial sample so we don't lose the final reading.
+    this.flush(Date.now() - s.startedAt);
+    const ended: RecordingSession = { ...s, endedAt: Date.now() };
+    this.session.set(null);
+    return ended;
+  }
+
+  /** External feed for GPS samples (or any other future source). */
+  pushLocation(lat: number, lng: number, altitudeM?: number): void {
+    this.partial.lat = lat;
+    this.partial.lng = lng;
+    if (altitudeM != null) this.partial.altitudeM = altitudeM;
+  }
+
+  private ingest(r: BleReading): void {
+    if (!this.session()) return;
+    if (r.kind === 'HRM') {
+      this.partial.hr = (r.data as HrmReading).bpm;
+    } else if (r.kind === 'CSC') {
+      const csc = r.data as CscReading;
+      if (csc.cadenceRpm != null) this.partial.cadenceRpm = csc.cadenceRpm;
+      if (csc.speedMps != null) this.partial.speedMps = csc.speedMps;
+      if (csc.cumulativeDistanceM != null) {
+        this.partial.distanceM = csc.cumulativeDistanceM;
+      }
+    }
+    const startedAt = this.session()!.startedAt;
+    const t = r.receivedAt - startedAt;
+    if (t - this.lastFlushT >= this.flushIntervalMs) {
+      this.flush(t);
+    }
+  }
+
+  private flush(t: number): void {
+    const s = this.session();
+    if (!s) return;
+    const sample: RecordingSample = { t, ...this.partial };
+    s.samples.push(sample);
+    this.session.set({ ...s, samples: s.samples });
+    this.latest.set(sample);
+    this.lastFlushT = t;
+  }
+}
+
+function computeStats(samples: RecordingSample[], durationMs: number): LiveStats {
+  const durationSec = Math.max(0, Math.round(durationMs / 1000));
+  let sumHr = 0;
+  let countHr = 0;
+  let maxHr = 0;
+  let sumCadence = 0;
+  let countCadence = 0;
+  let maxSpeed = 0;
+  let lastDistance = 0;
+  for (const s of samples) {
+    if (s.hr != null) {
+      sumHr += s.hr;
+      countHr++;
+      if (s.hr > maxHr) maxHr = s.hr;
+    }
+    if (s.cadenceRpm != null && s.cadenceRpm > 0) {
+      sumCadence += s.cadenceRpm;
+      countCadence++;
+    }
+    if (s.speedMps != null && s.speedMps > maxSpeed) {
+      maxSpeed = s.speedMps;
+    }
+    if (s.distanceM != null) {
+      lastDistance = s.distanceM;
+    }
+  }
+  return {
+    durationSec,
+    distanceM: lastDistance,
+    avgHr: countHr > 0 ? sumHr / countHr : undefined,
+    maxHr: countHr > 0 ? maxHr : undefined,
+    avgCadenceRpm: countCadence > 0 ? sumCadence / countCadence : undefined,
+    avgSpeedMps:
+      lastDistance > 0 && durationSec > 0
+        ? lastDistance / durationSec
+        : undefined,
+    maxSpeedMps: maxSpeed > 0 ? maxSpeed : undefined,
+  };
+}

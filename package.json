@@ -10,7 +10,12 @@
     "prisma:studio": "prisma studio",
     "serve:web": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx serve web",
     "serve:api": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx serve api",
-    "serve:all": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx run-many -t serve -p web,api"
+    "serve:mobile": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx serve mobile",
+    "serve:all": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx run-many -t serve -p web,api",
+    "build:mobile": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx build mobile",
+    "cap:sync": "cd apps/mobile && npx cap sync",
+    "cap:open:ios": "cd apps/mobile && npx cap open ios",
+    "cap:open:android": "cd apps/mobile && npx cap open android"
   },
   "private": true,
   "prisma": {
@@ -83,6 +88,10 @@
     "@angular/platform-browser": "~21.2.0",
     "@angular/router": "~21.2.0",
     "@anthropic-ai/sdk": "^0.100.1",
+    "@capacitor-community/bluetooth-le": "^8.2.0",
+    "@capacitor/cli": "^8.4.0",
+    "@capacitor/core": "^8.4.0",
+    "@capacitor/geolocation": "^8.2.0",
     "@google/genai": "^2.7.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.4",
