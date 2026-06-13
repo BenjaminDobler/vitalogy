@@ -1,106 +1,112 @@
-# New Nx Repository
+# Vitalogy
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+> Cycling-first training analytics — Strava import + per-activity detail (laps, streams, GPS map) + AI-assisted analysis (Anthropic Claude, Google Gemini).
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is ready ✨.
 
-[Learn more about this workspace setup and its capabilities](https://nx.dev/nx-api/js?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
-## Finish your Nx platform setup
 
-🚀 [Finish setting up your workspace](https://cloud.nx.app/connect/u0zQAQawIS) to get faster builds with remote caching, distributed task execution, and self-healing CI. [Learn more about Nx Cloud](https://nx.dev/ci/intro/why-nx-cloud).
-## Generate a library
+A personal cycling-analytics workspace. Import rides (Strava today, first-party
+recording later), explore the data in a modern Angular UI, and run AI-powered
+analyses via Anthropic Claude and Google Gemini.
 
-```sh
-npx nx g @nx/js:lib packages/pkg1 --publishable --importPath=@my-org/pkg1
-```
+Set up as an [Nx](https://nx.dev) monorepo so additional apps and tools can be
+added alongside the initial web + API.
 
-## Run tasks
-
-To build the library use:
-
-```sh
-npx nx build pkg1
-```
-
-To run any task with Nx use:
-
-```sh
-npx nx <target> <project-name>
-```
-
-These targets are either [inferred automatically](https://nx.dev/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
-
-[More about running tasks in the docs &raquo;](https://nx.dev/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Versioning and releasing
-
-To version and release the library use
+## Structure
 
 ```
-npx nx release
+apps/
+  web/              Angular 21 SPA (Tailwind + Angular CDK)
+  api/              NestJS 11 backend
+  web-e2e/          Playwright tests for web
+  api-e2e/          Jest e2e tests for api
+libs/
+  shared/
+    data-models/    Plain-TS interfaces shared by web + api
+  api/
+    db/             PrismaService + DbModule (Postgres)
+    strava/         Strava OAuth + import
+    ai/             Anthropic + Gemini services, AnalysisService, controller
+    activities/     Activity read API
+  web/
+    ui/             Shell + shared UI primitives
+    feature-activities/
+    feature-import/
+    feature-analysis/
+prisma/
+  schema.prisma     Database schema (User, StravaAccount, Activity, Stream, Lap, ApiKey, Analysis)
+docker-compose.yml  Postgres 17 for local dev
 ```
 
-Pass `--dry-run` to see what would happen without actually releasing the library.
+## First-time setup
 
-[Learn more about Nx release &raquo;](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+```bash
+# 1. Install
+npm install
 
-## Keep TypeScript project references up to date
+# 2. Copy env template and fill in secrets
+cp .env.example .env
 
-Nx automatically updates TypeScript [project references](https://www.typescriptlang.org/docs/handbook/project-references.html) in `tsconfig.json` files to ensure they remain accurate based on your project dependencies (`import` or `require` statements). This sync is automatically done when running tasks such as `build` or `typecheck`, which require updated references to function correctly.
+# 3. Start Postgres
+npm run db:up
 
-To manually trigger the process to sync the project graph dependencies information to the TypeScript project references, run the following command:
-
-```sh
-npx nx sync
+# 4. Create the database schema
+npm run prisma:migrate -- --name init
 ```
 
-You can enforce that the TypeScript project references are always in the correct state when running in CI by adding a step to your CI job configuration that runs the following command:
+`.env` is git-ignored. The minimum to boot the API is `DATABASE_URL`. Strava
+import needs `STRAVA_CLIENT_ID` + `STRAVA_CLIENT_SECRET` (create an app at
+<https://www.strava.com/settings/api>). AI analysis needs `ANTHROPIC_API_KEY`
+and/or `GEMINI_API_KEY` — leave both blank to fall back to the "export
+prompt" mode.
 
-```sh
-npx nx sync:check
+## Running
+
+```bash
+npm run serve:api   # API on http://localhost:3000/api
+npm run serve:web   # Web on http://localhost:4200, proxies /api → :3000
+npm run serve:all   # both in parallel
 ```
 
-[Learn more about nx sync](https://nx.dev/reference/nx-commands#sync)
+The web app's `proxy.conf.json` forwards `/api/**` to the NestJS server during
+development, so the browser doesn't need to know the API URL.
 
-## Nx Cloud
+Health check: `curl http://localhost:3000/api/health`
 
-Nx Cloud ensures a [fast and scalable CI](https://nx.dev/ci/intro/why-nx-cloud?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) pipeline. It includes features such as:
+## Key flows
 
-- [Remote caching](https://nx.dev/ci/features/remote-cache?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task distribution across multiple machines](https://nx.dev/ci/features/distribute-task-execution?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Automated e2e test splitting](https://nx.dev/ci/features/split-e2e-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task flakiness detection and rerunning](https://nx.dev/ci/features/flaky-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+- **Strava connect:** `GET /api/auth/strava/start` redirects to Strava; the
+  callback persists tokens in `StravaAccount`.
+- **Import:** `POST /api/strava/import-recent` pulls recent rides into
+  `Activity` (currently throws `Not implemented` — wire up in
+  `libs/api/strava/src/lib/strava.service.ts#importRecent`).
+- **Activities:** `GET /api/activities`, `GET /api/activities/:id`.
+- **Analysis:** `POST /api/analysis/run` (server-side SDK call) or
+  `POST /api/analysis/export` (returns a prompt + JSON the user pastes
+  into Claude/Gemini themselves).
 
-### Set up CI (non-Github Actions CI)
+The AI module supports three key modes (see `libs/shared/data-models/src/lib/ai.ts`):
+- `SERVER` — uses env vars; default when keys are configured server-side.
+- `USER` — uses keys stored encrypted in `ApiKey` per user (decrypt flow is TODO).
+- `EXPORT` — never calls a provider; just returns the prompt for manual use.
 
-**Note:** This is only required if your CI provider is not GitHub Actions.
+## Useful commands
 
-Use the following command to configure a CI workflow for your workspace:
-
-```sh
-npx nx g ci-workflow
+```bash
+npx nx graph              # visualize project graph
+npx nx affected -t build  # build only what changed
+npx nx run-many -t test   # run all tests
+npm run prisma:studio     # browse the database
 ```
 
-[Learn more about Nx on CI](https://nx.dev/ci/intro/ci-with-nx#ready-get-started-with-your-provider?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+## Notes / known gotchas
 
-## Install Nx Console
-
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
-
-[Install Nx Console &raquo;](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Useful links
-
-Learn more:
-
-- [Learn more about this workspace setup](https://nx.dev/nx-api/js?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Learn about Nx on CI](https://nx.dev/ci/intro/ci-with-nx?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Releasing Packages with Nx release](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [What are Nx plugins?](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-And join the Nx community:
-
-- [Discord](https://go.nx.dev/community)
-- [Follow us on X](https://twitter.com/nxdevtools) or [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [Our Youtube channel](https://www.youtube.com/@nxdevtools)
-- [Our blog](https://nx.dev/blog?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+- The workspace uses Nx 22's TS-references setup. Angular doesn't support it
+  natively yet, so all Nx commands run with `NX_IGNORE_UNSUPPORTED_TS_SETUP=true`
+  (already baked into the `serve:*` scripts). When that warning becomes
+  redundant in a future Angular release, drop the env var.
+- `apps/api` uses webpack (Nest's standard Nx setup) and bundles workspace libs.
+- `apps/web` uses Angular's esbuild bundler.
+- Prisma is pinned to v6 — Prisma 7 dropped the `url` field in `datasource`
+  and requires a `prisma.config.ts` adapter setup. Upgrade when the docs catch up.
+- `DEV_USER_ID = 'dev-user'` is hardcoded in the controllers as a stand-in
+  for real auth. Replace with a proper auth flow before sharing with anyone.

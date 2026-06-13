@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node"],
+    "rootDir": "src",
+    "tsBuildInfoFile": "dist/tsconfig.app.tsbuildinfo",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "target": "es2021"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [],
+  "references": [
+    {
+      "path": "../../libs/api/activities/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/api/strava/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/api/ai/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/api/db/tsconfig.lib.json"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/out-tsc",
+    "types": []
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"],
+  "references": [
+    {
+      "path": "../../libs/web/ui/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/web/feature-analysis/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/web/feature-import/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/web/feature-activities/tsconfig.lib.json"
+    }
+  ]
+}

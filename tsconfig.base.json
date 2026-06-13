@@ -16,6 +16,12 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "es2022",
-    "customConditions": ["@org/source"]
+    "customConditions": ["vitalogy"],
+    "paths": {
+      "feature-activities": ["./libs/web/feature-activities/src/index.ts"],
+      "feature-import": ["./libs/web/feature-import/src/index.ts"],
+      "feature-analysis": ["./libs/web/feature-analysis/src/index.ts"],
+      "ui": ["./libs/web/ui/src/index.ts"]
+    }
   }
 }

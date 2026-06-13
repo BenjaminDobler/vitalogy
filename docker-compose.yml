@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: cycle-app-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cycle}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cycle}
+      POSTGRES_DB: ${POSTGRES_DB:-cycle}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - cycle-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cycle} -d ${POSTGRES_DB:-cycle}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  cycle-postgres-data:

@@ -2,5 +2,45 @@
   "extends": "./tsconfig.base.json",
   "compileOnSave": false,
   "files": [],
-  "references": []
+  "references": [
+    {
+      "path": "./apps/web-e2e"
+    },
+    {
+      "path": "./apps/api-e2e"
+    },
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./libs/shared/data-models"
+    },
+    {
+      "path": "./libs/api/strava"
+    },
+    {
+      "path": "./libs/api/ai"
+    },
+    {
+      "path": "./libs/api/db"
+    },
+    {
+      "path": "./libs/api/activities"
+    },
+    {
+      "path": "./libs/web/feature-activities"
+    },
+    {
+      "path": "./libs/web/feature-analysis"
+    },
+    {
+      "path": "./libs/web/feature-import"
+    },
+    {
+      "path": "./libs/web/ui"
+    },
+    {
+      "path": "./apps/web"
+    }
+  ]
 }
