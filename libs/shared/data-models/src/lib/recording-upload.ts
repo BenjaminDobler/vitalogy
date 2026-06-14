@@ -23,6 +23,11 @@ export interface UploadActivityRequest {
    * Empty / undefined = the whole session is lap 1 (and no Lap rows get created).
    */
   lapSplits?: number[];
+  /**
+   * Paused intervals (ms since session start). Used to split moving time
+   * from elapsed wall-clock time. Empty / undefined = never paused.
+   */
+  pauseSegments?: Array<{ start: number; end: number }>;
   /** Weather snapshot — most-recent observation during the session. */
   weather?: WeatherSnapshot;
 }

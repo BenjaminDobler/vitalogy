@@ -1,8 +1,10 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { BleManager, BleReading, CscReading, HrmReading } from 'ble';
+import { ConfigService } from 'api-client';
 import { Subscription } from 'rxjs';
 import {
   LiveStats,
+  PauseSegment,
   RecordingSample,
   RecordingSession,
 } from './recording-types';
@@ -18,15 +20,18 @@ import {
 @Injectable({ providedIn: 'root' })
 export class RecordingService {
   private readonly ble = inject(BleManager);
+  private readonly config = inject(ConfigService);
 
   readonly session = signal<RecordingSession | null>(null);
   /** Most recent merged sample — used for live tile rendering. */
   readonly latest = signal<RecordingSample | null>(null);
+  /** True while auto-pause is holding the clock. */
+  readonly paused = signal(false);
 
   readonly stats = computed<LiveStats | null>(() => {
     const s = this.session();
     if (!s) return null;
-    return computeStats(s.samples, this.now() - s.startedAt);
+    return computeStats(s.samples, this.now() - s.startedAt, s.pauseSegments);
   });
 
   /** Wall-clock tick (1 Hz) used so duration updates in the UI without new samples. */
@@ -39,6 +44,9 @@ export class RecordingService {
   private lastFlushT = 0;
   private readonly flushIntervalMs = 1000;
 
+  /** Auto-pause: timestamp (ms) when speed first dropped below threshold. */
+  private slowSinceMs?: number;
+
   start(): RecordingSession {
     if (this.session()) {
       throw new Error('Recording already in progress');
@@ -49,15 +57,21 @@ export class RecordingService {
       startedAt: now,
       samples: [],
       lapSplits: [],
+      pauseSegments: [],
       weather: null,
     };
     this.session.set(session);
     this.latest.set(null);
+    this.paused.set(false);
+    this.slowSinceMs = undefined;
     this.partial = {};
     this.lastFlushT = 0;
 
     this.subscription = this.ble.readings$.subscribe((r) => this.ingest(r));
-    this.tickHandle = setInterval(() => this.now.set(Date.now()), 1000);
+    this.tickHandle = setInterval(() => {
+      this.now.set(Date.now());
+      this.checkAutoPause();
+    }, 1000);
     return session;
   }
 
@@ -68,11 +82,77 @@ export class RecordingService {
     this.subscription = undefined;
     if (this.tickHandle) clearInterval(this.tickHandle);
     this.tickHandle = undefined;
+
+    // Close any in-flight pause segment so we don't ship an `end: null` to the API.
+    let segments = s.pauseSegments;
+    if (this.paused() && segments.length > 0 && segments[segments.length - 1].end == null) {
+      const t = Date.now() - s.startedAt;
+      segments = [...segments];
+      segments[segments.length - 1] = { ...segments[segments.length - 1], end: t };
+    }
+    this.paused.set(false);
+
     // Flush the last partial sample so we don't lose the final reading.
     this.flush(Date.now() - s.startedAt);
-    const ended: RecordingSession = { ...s, endedAt: Date.now() };
+    const ended: RecordingSession = {
+      ...s,
+      pauseSegments: segments,
+      endedAt: Date.now(),
+    };
     this.session.set(null);
     return ended;
+  }
+
+  /**
+   * Per-second wall-clock-driven auto-pause: when latest speed sits below the
+   * configured threshold for the configured delay, enter paused state. Resume
+   * the moment speed picks back up. ConfigService values are read each tick
+   * so live tweaks in Settings apply without a restart.
+   */
+  private checkAutoPause(): void {
+    if (!this.config.autoPauseEnabled()) {
+      if (this.paused()) this.endPause();
+      this.slowSinceMs = undefined;
+      return;
+    }
+    const speedKmh = (this.latest()?.speedMps ?? 0) * 3.6;
+    const threshold = this.config.autoPauseThresholdKmh();
+    const delayMs = this.config.autoPauseDelaySec() * 1000;
+
+    if (speedKmh < threshold) {
+      if (this.slowSinceMs == null) {
+        this.slowSinceMs = Date.now();
+      } else if (!this.paused() && Date.now() - this.slowSinceMs >= delayMs) {
+        this.beginPause();
+      }
+    } else {
+      this.slowSinceMs = undefined;
+      if (this.paused()) this.endPause();
+    }
+  }
+
+  private beginPause(): void {
+    const s = this.session();
+    if (!s) return;
+    const t = Date.now() - s.startedAt;
+    this.session.set({
+      ...s,
+      pauseSegments: [...s.pauseSegments, { start: t, end: null }],
+    });
+    this.paused.set(true);
+  }
+
+  private endPause(): void {
+    const s = this.session();
+    if (!s) return;
+    const t = Date.now() - s.startedAt;
+    const segments = [...s.pauseSegments];
+    const last = segments[segments.length - 1];
+    if (last && last.end == null) {
+      segments[segments.length - 1] = { ...last, end: t };
+    }
+    this.session.set({ ...s, pauseSegments: segments });
+    this.paused.set(false);
   }
 
   /** External feed for GPS samples (or any other future source). */
@@ -278,6 +358,17 @@ function distanceWithin(
   return first != null && last != null ? last - first : 0;
 }
 
+/** Total paused milliseconds in [0, nowMs]. In-flight segment uses `nowMs` as its end. */
+function pausedMsTotal(segments: PauseSegment[], nowMs: number): number {
+  let total = 0;
+  for (const seg of segments) {
+    const start = Math.max(0, Math.min(seg.start, nowMs));
+    const end = Math.max(0, Math.min(seg.end ?? nowMs, nowMs));
+    if (end > start) total += end - start;
+  }
+  return total;
+}
+
 /**
  * Stats for a lap window: same shape as computeStats but `distanceM` is
  * the *delta* across this lap (last cumulative - first cumulative), not the
@@ -318,6 +409,7 @@ function computeLapStats(samples: RecordingSample[], durationMs: number): LiveSt
 
   return {
     durationSec,
+    elapsedSec: durationSec,
     distanceM: lapDistance,
     avgHr: countHr > 0 ? sumHr / countHr : undefined,
     maxHr: countHr > 0 ? maxHr : undefined,
@@ -328,8 +420,15 @@ function computeLapStats(samples: RecordingSample[], durationMs: number): LiveSt
   };
 }
 
-function computeStats(samples: RecordingSample[], durationMs: number): LiveStats {
-  const durationSec = Math.max(0, Math.round(durationMs / 1000));
+function computeStats(
+  samples: RecordingSample[],
+  elapsedMs: number,
+  pauseSegments: PauseSegment[],
+): LiveStats {
+  const elapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
+  const movingMs = Math.max(0, elapsedMs - pausedMsTotal(pauseSegments, elapsedMs));
+  const movingSec = Math.round(movingMs / 1000);
+
   let sumHr = 0;
   let countHr = 0;
   let maxHr = 0;
@@ -355,15 +454,14 @@ function computeStats(samples: RecordingSample[], durationMs: number): LiveStats
     }
   }
   return {
-    durationSec,
+    durationSec: movingSec,
+    elapsedSec,
     distanceM: lastDistance,
     avgHr: countHr > 0 ? sumHr / countHr : undefined,
     maxHr: countHr > 0 ? maxHr : undefined,
     avgCadenceRpm: countCadence > 0 ? sumCadence / countCadence : undefined,
     avgSpeedMps:
-      lastDistance > 0 && durationSec > 0
-        ? lastDistance / durationSec
-        : undefined,
+      lastDistance > 0 && movingSec > 0 ? lastDistance / movingSec : undefined,
     maxSpeedMps: maxSpeed > 0 ? maxSpeed : undefined,
   };
 }

@@ -48,7 +48,12 @@ export class ActivitiesService {
       return { activityId: existing.id, alreadyExisted: true };
     }
 
-    const stats = summarize(req.samples, req.startedAt, req.endedAt);
+    const stats = summarize(
+      req.samples,
+      req.startedAt,
+      req.endedAt,
+      req.pauseSegments ?? [],
+    );
 
     const created = await this.prisma.activity.create({
       data: {
@@ -59,8 +64,8 @@ export class ActivitiesService {
         sportType: req.sportType ?? 'Ride',
         startTime: new Date(req.startedAt),
         timezone: null,
-        durationSec: stats.durationSec,
-        elapsedSec: stats.durationSec,
+        durationSec: stats.movingSec,
+        elapsedSec: stats.elapsedSec,
         distanceM: stats.distanceM,
         elevationGainM: stats.elevationGainM,
         avgSpeedMps: stats.avgSpeedMps,
@@ -100,7 +105,7 @@ export class ActivitiesService {
       req.samples,
       req.lapSplits ?? [],
       new Date(req.startedAt),
-      stats.durationSec,
+      stats.elapsedSec,
       created.id,
     );
     if (lapsToCreate.length > 0) {
@@ -141,7 +146,10 @@ export class ActivitiesService {
 }
 
 interface RecordingStats {
-  durationSec: number;
+  /** Total wall-clock duration in seconds. */
+  elapsedSec: number;
+  /** Moving time (elapsed minus paused) in seconds. */
+  movingSec: number;
   distanceM: number;
   elevationGainM: number | null;
   avgSpeedMps: number | null;
@@ -155,11 +163,17 @@ function summarize(
   samples: UploadSample[],
   startedAt: string,
   endedAt: string,
+  pauseSegments: Array<{ start: number; end: number }>,
 ): RecordingStats {
-  const durationSec = Math.max(
+  const elapsedSec = Math.max(
     0,
     Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000),
   );
+  const pausedSec = Math.round(
+    pauseSegments.reduce((acc, seg) => acc + Math.max(0, seg.end - seg.start), 0) /
+      1000,
+  );
+  const movingSec = Math.max(0, elapsedSec - pausedSec);
 
   let lastDistance = 0;
   let sumHr = 0,
@@ -192,11 +206,12 @@ function summarize(
   }
 
   return {
-    durationSec,
+    elapsedSec,
+    movingSec,
     distanceM: lastDistance,
     elevationGainM: prevAlt != null ? Math.round(elevGain) : null,
     avgSpeedMps:
-      lastDistance > 0 && durationSec > 0 ? lastDistance / durationSec : null,
+      lastDistance > 0 && movingSec > 0 ? lastDistance / movingSec : null,
     maxSpeedMps: maxSpeed > 0 ? maxSpeed : null,
     avgHr: countHr > 0 ? sumHr / countHr : null,
     maxHr: countHr > 0 ? maxHr : null,

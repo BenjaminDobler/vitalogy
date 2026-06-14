@@ -10,6 +10,24 @@ import {
 import { GpsTracker, RecordingService, UploadQueue } from 'recording';
 import { WeatherService } from 'weather';
 import { compassCardinal, describeWeather } from 'data-models';
+import { ConfigService, type RecordTile } from 'api-client';
+
+interface TileDef {
+  label: string;
+  color: string;
+  unit: string;
+}
+
+const TILE_DEFS: Record<RecordTile, TileDef> = {
+  hr: { label: 'Heart rate', color: 'text-rose-400', unit: 'bpm' },
+  cadence: { label: 'Cadence', color: 'text-amber-400', unit: 'rpm' },
+  speed: { label: 'Speed', color: 'text-sky-400', unit: 'km/h' },
+  distance: { label: 'Distance', color: 'text-emerald-400', unit: 'km' },
+  'lap-time': { label: 'Lap time', color: 'text-purple-400', unit: '' },
+  'total-time': { label: 'Total time', color: 'text-slate-300', unit: '' },
+  'avg-speed': { label: 'Avg speed', color: 'text-sky-300', unit: 'km/h' },
+  'avg-hr': { label: 'Avg HR', color: 'text-rose-300', unit: 'bpm' },
+};
 
 /**
  * Single-screen MVP: scan → connect → live readings → record / stop.
@@ -193,48 +211,49 @@ import { compassCardinal, describeWeather } from 'data-models';
       }
 
       @if (connected().length > 0) {
-        <section class="px-5 pb-6 grid grid-cols-2 gap-3 mt-auto">
-          <div class="rounded-xl bg-slate-900 p-4">
-            <div class="text-[10px] uppercase tracking-wider text-rose-400">
-              Heart rate
+        <section
+          class="px-5 pb-6 grid gap-3 mt-auto"
+          [class.grid-cols-2]="layout() === 'two-col'"
+          [class.grid-cols-1]="layout() === 'one-col'"
+        >
+          @for (tile of tiles(); track tile) {
+            <div class="rounded-xl bg-slate-900 p-4">
+              <div
+                class="text-[10px] uppercase tracking-wider"
+                [class]="tileDef(tile).color"
+              >
+                {{ tileDef(tile).label }}
+              </div>
+              <div
+                class="font-bold tabular-nums mt-1"
+                [class.text-4xl]="layout() === 'two-col'"
+                [class.text-6xl]="layout() === 'one-col'"
+              >
+                {{ tileValue(tile) }}
+                @if (tileDef(tile).unit) {
+                  <span class="text-sm text-slate-500 font-normal">
+                    {{ tileDef(tile).unit }}
+                  </span>
+                }
+              </div>
             </div>
-            <div class="text-4xl font-bold tabular-nums mt-1">
-              {{ heartRate() ?? '—' }}
-              <span class="text-sm text-slate-500 font-normal">bpm</span>
-            </div>
-          </div>
-          <div class="rounded-xl bg-slate-900 p-4">
-            <div class="text-[10px] uppercase tracking-wider text-amber-400">
-              Cadence
-            </div>
-            <div class="text-4xl font-bold tabular-nums mt-1">
-              {{ (cadence() ?? 0) | number: '1.0-0' }}
-              <span class="text-sm text-slate-500 font-normal">rpm</span>
-            </div>
-          </div>
-          <div class="rounded-xl bg-slate-900 p-4">
-            <div class="text-[10px] uppercase tracking-wider text-sky-400">
-              Speed
-            </div>
-            <div class="text-4xl font-bold tabular-nums mt-1">
-              {{ (speedKmh() ?? 0) | number: '1.1-1' }}
-              <span class="text-sm text-slate-500 font-normal">km/h</span>
-            </div>
-          </div>
-          <div class="rounded-xl bg-slate-900 p-4">
-            <div class="text-[10px] uppercase tracking-wider text-emerald-400">
-              Distance
-            </div>
-            <div class="text-4xl font-bold tabular-nums mt-1">
-              {{ distanceKm() | number: '1.2-2' }}
-              <span class="text-sm text-slate-500 font-normal">km</span>
-            </div>
-          </div>
+          }
         </section>
 
         @if (recording()) {
-          <div class="px-5 pb-2 text-center text-sm text-slate-400 tabular-nums">
-            Total {{ durationText() }}
+          <div class="px-5 pb-2 text-center text-sm tabular-nums">
+            @if (paused()) {
+              <span class="text-amber-400 font-semibold">⏸ PAUSED</span>
+              <span class="text-slate-500 mx-2">·</span>
+            }
+            <span class="text-slate-400">
+              Total {{ durationText() }}
+              @if (stats(); as st) {
+                <span class="text-slate-600">
+                  · {{ formatDur(st.elapsedSec) }} elapsed
+                </span>
+              }
+            </span>
           </div>
 
           @if (lapToast(); as toast) {
@@ -354,9 +373,43 @@ export class FeatureRecord {
   private readonly uploadQueue = inject(UploadQueue);
   private readonly gps = inject(GpsTracker);
   private readonly weather = inject(WeatherService);
+  private readonly config = inject(ConfigService);
 
   protected readonly gpsActive = this.gps.active;
   protected readonly weatherLatest = this.weather.latest;
+  protected readonly paused = this.recordingService.paused;
+
+  protected readonly tiles = this.config.recordTiles;
+  protected readonly layout = this.config.recordLayout;
+
+  protected tileDef(t: RecordTile): TileDef {
+    return TILE_DEFS[t];
+  }
+
+  protected tileValue(t: RecordTile): string {
+    switch (t) {
+      case 'hr':
+        return this.heartRate()?.toString() ?? '—';
+      case 'cadence':
+        return formatNumber(this.cadence() ?? 0, 0);
+      case 'speed':
+        return formatNumber(this.speedKmh() ?? 0, 1);
+      case 'distance':
+        return formatNumber(this.distanceKm(), 2);
+      case 'lap-time':
+        return this.lapDurationText();
+      case 'total-time':
+        return this.durationText();
+      case 'avg-speed': {
+        const v = this.stats()?.avgSpeedMps;
+        return v != null ? formatNumber(v * 3.6, 1) : '—';
+      }
+      case 'avg-hr': {
+        const v = this.stats()?.avgHr;
+        return v != null ? formatNumber(v, 0) : '—';
+      }
+    }
+  }
 
   protected readonly connected = this.ble.connected;
   protected readonly scanning = this.ble.scanning;
@@ -546,6 +599,14 @@ export class FeatureRecord {
   protected windCardinal(deg: number | null | undefined): string {
     return compassCardinal(deg);
   }
+}
+
+function formatNumber(value: number, fractionDigits: number): string {
+  if (!Number.isFinite(value)) return '—';
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  });
 }
 
 function formatDuration(seconds: number): string {

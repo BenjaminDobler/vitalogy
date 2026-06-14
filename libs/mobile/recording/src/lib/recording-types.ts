@@ -18,6 +18,12 @@ export interface RecordingSample {
   altitudeM?: number;
 }
 
+/** A paused interval inside a session, ms since session start. `end` null = ongoing. */
+export interface PauseSegment {
+  start: number;
+  end: number | null;
+}
+
 export interface RecordingSession {
   id: string;
   startedAt: number;
@@ -29,13 +35,17 @@ export interface RecordingSession {
    * Example: [600000, 1200000] → three laps: 0–10min, 10–20min, 20–end.
    */
   lapSplits: number[];
+  /** Periods when the session was paused (auto-pause when speed dropped). */
+  pauseSegments: PauseSegment[];
   /** Latest weather snapshot taken during the session, if any. */
   weather?: import('data-models').WeatherSnapshot | null;
 }
 
 export interface LiveStats {
-  /** Duration in seconds. */
+  /** Moving time in seconds (paused intervals subtracted). The headline value. */
   durationSec: number;
+  /** Total wall-clock duration in seconds, including paused intervals. */
+  elapsedSec: number;
   /** Cumulative distance in meters. */
   distanceM: number;
   /** Average heart rate over samples where it was non-null. */
