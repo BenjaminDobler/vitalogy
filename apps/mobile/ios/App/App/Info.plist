@@ -31,6 +31,15 @@
 	<string>Vitalogy uses your location to record the GPS track of your ride.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Vitalogy uses your location to record the GPS track of your ride, including while the app is in the background.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Vitalogy uses your local network to reach the Vitalogy API running on your Mac during development.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Dev convenience: allow plain HTTP to any address. Tighten in prod
+		     to a specific HTTPS domain (NSExceptionDomains). -->
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
