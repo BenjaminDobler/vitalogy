@@ -162,17 +162,29 @@ type SimMode = 'synthetic' | 'replay';
               </div>
             </div>
 
-            @if (replayProgress() > 0) {
-              <div>
-                <div class="flex items-baseline justify-between text-xs text-slate-500 mb-1">
-                  <span>Playhead</span>
-                  <span class="font-mono">{{ replayProgress() * 100 | number: '1.0-0' }}%</span>
+            @if (selectedActivity(); as a) {
+              <div class="space-y-1.5">
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    (click)="togglePlayPause()"
+                    [disabled]="!running()"
+                    class="w-8 h-8 rounded-md border border-slate-300 hover:bg-slate-50 disabled:opacity-50 flex items-center justify-center text-sm"
+                    [attr.aria-label]="replayPaused() ? 'Resume' : 'Pause'"
+                  >{{ replayPaused() ? '▶' : '⏸' }}</button>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1000"
+                    step="1"
+                    [value]="replayProgress() * 1000"
+                    (input)="scrubReplay(toNum($event) / 1000)"
+                    class="flex-1 accent-emerald-500"
+                  />
                 </div>
-                <div class="h-1.5 bg-slate-200 rounded">
-                  <div
-                    class="h-full rounded bg-emerald-500"
-                    [style.width.%]="replayProgress() * 100"
-                  ></div>
+                <div class="flex justify-between text-[11px] text-slate-500 font-mono pl-10">
+                  <span>{{ formatDurLong(replayPlayheadSec()) }}</span>
+                  <span>{{ formatDurLong(a.durationSec) }}</span>
                 </div>
               </div>
             }
@@ -314,9 +326,12 @@ export class SimulatorShell implements OnInit, OnDestroy {
 
   // Replay state
   protected readonly activities = this.replay.activities;
+  protected readonly selectedActivity = this.replay.selected;
   protected readonly selectedId = computed(() => this.replay.selected()?.id ?? '');
   protected readonly replaySpeed = this.replay.speedMultiplier;
   protected readonly replayProgress = this.replay.progress;
+  protected readonly replayPlayheadSec = this.replay.playheadSec;
+  protected readonly replayPaused = this.replay.paused;
   protected readonly replayError = this.replay.lastError;
 
   protected readonly running = computed(
@@ -405,6 +420,15 @@ export class SimulatorShell implements OnInit, OnDestroy {
     await this.replay.selectActivity(id);
   }
 
+  protected scrubReplay(fraction: number): void {
+    this.replay.scrubTo(fraction);
+  }
+
+  protected togglePlayPause(): void {
+    if (this.replayPaused()) this.replay.resume();
+    else this.replay.pause();
+  }
+
   protected start(): void {
     if (this.mode() === 'synthetic') {
       this.sim.start();
@@ -435,5 +459,16 @@ export class SimulatorShell implements OnInit, OnDestroy {
     const m = Math.floor((seconds % 3600) / 60);
     if (h > 0) return `${h}:${m.toString().padStart(2, '0')}`;
     return `${m} min`;
+  }
+
+  /** "1:23:45" or "23:45" for timeline labels. */
+  protected formatDurLong(seconds: number): string {
+    const s = Math.max(0, Math.floor(seconds));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    if (h > 0) return `${h}:${pad(m)}:${pad(sec)}`;
+    return `${m}:${pad(sec)}`;
   }
 }

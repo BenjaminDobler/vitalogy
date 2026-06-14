@@ -1,4 +1,4 @@
-import { inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, signal } from '@angular/core';
 import { BleManager, type BleReading, type CscReading, type HrmReading } from 'ble';
 import { ApiClient } from 'api-client';
 import type {
@@ -16,11 +16,12 @@ import { WeatherService } from 'weather';
  * Pipeline:
  *  - loadList() fetches GET /api/activities for the picker dropdown
  *  - selectActivity(id) fetches the detail (streams + laps + weather)
- *  - start() walks the time/HR/cadence/speed/distance/latlng streams in
- *    lockstep, emitting one BleReading per second of activity time scaled
- *    by `speedMultiplier`. So at 4× speed, one second of wall clock = 4s
- *    of activity time.
- *  - stop() halts playback
+ *  - start() begins walking the streams; one wall-clock second advances the
+ *    playhead by `speedMultiplier` seconds of activity time
+ *  - pause() / resume() halt and re-arm the tick timer without resetting state
+ *  - scrubTo(fraction) jumps the playhead; if currently playing the new
+ *    position takes over, if paused you can preview without auto-advance
+ *  - stop() halts playback and clears the fake connections
  */
 @Injectable({ providedIn: 'root' })
 export class ReplayDriver {
@@ -31,15 +32,24 @@ export class ReplayDriver {
 
   readonly activities = signal<Activity[]>([]);
   readonly selected = signal<ActivityDetail | null>(null);
+  /** True between start() and stop() — even when paused. */
   readonly running = signal(false);
+  /** True when running but the tick timer is stopped. */
+  readonly paused = signal(false);
   readonly speedMultiplier = signal<1 | 2 | 4 | 8>(1);
   readonly lastError = signal<string | null>(null);
-  /** Playback cursor as a fraction 0..1 of the activity's duration. */
-  readonly progress = signal(0);
+
+  /** Activity time (sec) the playhead currently sits at. */
+  readonly playheadSec = signal(0);
+
+  /** Playhead as a 0..1 fraction of the activity's duration. */
+  readonly progress = computed(() => {
+    const d = this.selected();
+    if (!d || d.durationSec <= 0) return 0;
+    return Math.max(0, Math.min(1, this.playheadSec() / d.durationSec));
+  });
 
   private tickHandle?: ReturnType<typeof setInterval>;
-  /** Activity time (sec) advanced so far during the current replay. */
-  private playheadSec = 0;
   /** Decoded streams indexed by type for O(1) lookup at each tick. */
   private streamsByType = new Map<string, ActivityStream>();
   /** Time-stream values in seconds. */
@@ -65,6 +75,7 @@ export class ReplayDriver {
       this.timeAxis = Array.isArray(timeStream?.data)
         ? (timeStream!.data as number[])
         : [];
+      this.playheadSec.set(0);
     } catch (err) {
       this.lastError.set(toMessage(err));
     }
@@ -74,16 +85,15 @@ export class ReplayDriver {
     const detail = this.selected();
     if (!detail || this.running()) return;
     this.running.set(true);
-    this.playheadSec = 0;
-    this.progress.set(0);
+    this.paused.set(false);
+    this.playheadSec.set(0);
 
-    // Fake the connected sensors so the UI shows them.
+    // Fake connected sensors so the UI shows them.
     this.ble.connected.set([
       { deviceId: 'replay-hrm', name: `Replay · ${detail.name}`, subscribed: ['HRM'] },
       { deviceId: 'replay-csc', name: `Replay · ${detail.name}`, subscribed: ['CSC'] },
     ]);
 
-    // Set weather snapshot from the activity (if present).
     if (detail.weatherCode != null || detail.tempC != null) {
       this.weather.latest.set({
         tempC: detail.tempC ?? null,
@@ -99,38 +109,66 @@ export class ReplayDriver {
       });
     }
 
-    // Tick the real wall clock at 1Hz; advance activity time by `speedMultiplier`.
-    this.tickHandle = setInterval(() => this.tick(), 1000);
+    this.startTicker();
+  }
+
+  pause(): void {
+    if (!this.running() || this.paused()) return;
+    this.paused.set(true);
+    this.stopTicker();
+  }
+
+  resume(): void {
+    if (!this.running() || !this.paused()) return;
+    this.paused.set(false);
+    this.startTicker();
   }
 
   stop(): void {
-    if (this.tickHandle) clearInterval(this.tickHandle);
-    this.tickHandle = undefined;
+    this.stopTicker();
     this.ble.connected.set([]);
     this.running.set(false);
+    this.paused.set(false);
   }
 
-  /** Set playhead to a given fraction (0..1) of the activity's duration. */
+  /**
+   * Jump the playhead to `fraction` (0..1) of the activity. Emits one frame
+   * of data at the new position so the UI updates even when paused.
+   */
   scrubTo(fraction: number): void {
     const detail = this.selected();
     if (!detail) return;
-    this.playheadSec = Math.max(0, Math.min(1, fraction)) * detail.durationSec;
-    this.progress.set(fraction);
+    const clamped = Math.max(0, Math.min(1, fraction));
+    this.playheadSec.set(clamped * detail.durationSec);
+    if (this.running()) this.emitAtPlayhead();
+  }
+
+  private startTicker(): void {
+    this.stopTicker();
+    this.tickHandle = setInterval(() => this.tick(), 1000);
+  }
+  private stopTicker(): void {
+    if (this.tickHandle) clearInterval(this.tickHandle);
+    this.tickHandle = undefined;
   }
 
   private tick(): void {
     const detail = this.selected();
     if (!detail) return;
-    this.playheadSec += this.speedMultiplier();
-    this.progress.set(Math.min(1, this.playheadSec / detail.durationSec));
-
-    if (this.playheadSec >= detail.durationSec) {
+    const next = this.playheadSec() + this.speedMultiplier();
+    if (next >= detail.durationSec) {
+      this.playheadSec.set(detail.durationSec);
       this.stop();
       return;
     }
+    this.playheadSec.set(next);
+    this.emitAtPlayhead();
+  }
 
-    // Find the sample index for the current playhead in the time stream.
-    const idx = findSampleIndex(this.timeAxis, this.playheadSec);
+  /** Emit a single frame's worth of readings at the current playhead. */
+  private emitAtPlayhead(): void {
+    if (!this.running()) return;
+    const idx = findSampleIndex(this.timeAxis, this.playheadSec());
     if (idx < 0) return;
     const now = Date.now();
 
