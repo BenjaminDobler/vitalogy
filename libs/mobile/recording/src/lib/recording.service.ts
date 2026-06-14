@@ -85,16 +85,107 @@ export class RecordingService {
    * Drop a lap boundary at the current time. The lap that was in progress
    * closes, and a new one starts. No-op if no session is in progress or the
    * caller taps Lap twice within the same flush window.
+   *
+   * Also emits a transient `lapToast` so the UI can announce "Lap 3: 2:18
+   * (-4 sec vs best)" or "🏆 New best lap!" without polling.
    */
   markLap(): void {
     const s = this.session();
     if (!s) return;
     const t = Date.now() - s.startedAt;
     const splits = s.lapSplits;
-    // Prevent accidental double-tap (same flush window) → no zero-length laps.
     if (splits.length > 0 && t - splits[splits.length - 1] < 500) return;
+
+    const lapStartMs = splits.length > 0 ? splits[splits.length - 1] : 0;
+    const lapEndMs = t;
+    const newLapIndex = splits.length + 1;
+    const newLapDurationSec = Math.max(
+      0,
+      Math.round((lapEndMs - lapStartMs) / 1000),
+    );
+    const previousBestDur = findBestLapDurationSec(splits);
+    const deltaSec =
+      previousBestDur != null ? newLapDurationSec - previousBestDur : null;
+    const isNewBest = previousBestDur != null && newLapDurationSec < previousBestDur;
+
+    this.showLapToast({
+      index: newLapIndex,
+      durationSec: newLapDurationSec,
+      deltaSec,
+      isNewBest,
+    });
+
     const nextSplits = [...splits, t];
     this.session.set({ ...s, lapSplits: nextSplits });
+  }
+
+  /**
+   * Live "vs best lap" delta. Positive meters = you are ahead of where the
+   * best lap was at this elapsed-into-lap time; negative = behind.
+   * Returns null until at least one lap has been completed.
+   */
+  readonly lapDelta = computed<{
+    meters: number;
+    referenceLap: number;
+  } | null>(() => {
+    const s = this.session();
+    if (!s || s.lapSplits.length === 0) return null;
+
+    // Find fastest completed lap so far (1-based index).
+    let bestIdx = 0;
+    let bestDur = Infinity;
+    for (let i = 0; i < s.lapSplits.length; i++) {
+      const startMs = i === 0 ? 0 : s.lapSplits[i - 1];
+      const endMs = s.lapSplits[i];
+      const dur = endMs - startMs;
+      if (dur < bestDur) {
+        bestDur = dur;
+        bestIdx = i;
+      }
+    }
+
+    const bestStartMs = bestIdx === 0 ? 0 : s.lapSplits[bestIdx - 1];
+    const bestEndMs = s.lapSplits[bestIdx];
+
+    const currentLapStartMs = s.lapSplits[s.lapSplits.length - 1];
+    const elapsedInCurrent = this.now() - s.startedAt - currentLapStartMs;
+
+    // "Where was the best lap at this same elapsed-into-lap moment?"
+    // Cap at the best lap's end — once you've ridden longer than the best lap
+    // duration, the comparison is just "best lap's total distance."
+    const bestTargetMs = Math.min(bestStartMs + elapsedInCurrent, bestEndMs);
+
+    const bestDist = distanceWithin(s.samples, bestStartMs, bestTargetMs);
+    const currentDist = distanceWithin(
+      s.samples,
+      currentLapStartMs,
+      currentLapStartMs + elapsedInCurrent,
+    );
+
+    return {
+      meters: Math.round(currentDist - bestDist),
+      referenceLap: bestIdx + 1,
+    };
+  });
+
+  /** Most recently announced lap completion. Auto-clears after 5s. */
+  readonly lapToast = signal<{
+    index: number;
+    durationSec: number;
+    deltaSec: number | null;
+    isNewBest: boolean;
+  } | null>(null);
+  private toastClearHandle?: ReturnType<typeof setTimeout>;
+
+  private showLapToast(payload: {
+    index: number;
+    durationSec: number;
+    deltaSec: number | null;
+    isNewBest: boolean;
+  }): void {
+    this.lapToast.set(payload);
+    if (this.toastClearHandle) clearTimeout(this.toastClearHandle);
+    this.toastClearHandle = setTimeout(() => this.lapToast.set(null), 5000);
   }
 
   /** 1-based current lap index — what you'd display next to "Stop". */
@@ -147,6 +238,36 @@ export class RecordingService {
     this.latest.set(sample);
     this.lastFlushT = t;
   }
+}
+
+/** Shortest lap so far, in seconds. Null if no laps closed yet. */
+function findBestLapDurationSec(splits: number[]): number | null {
+  if (splits.length === 0) return null;
+  let bestMs = Infinity;
+  for (let i = 0; i < splits.length; i++) {
+    const startMs = i === 0 ? 0 : splits[i - 1];
+    const dur = splits[i] - startMs;
+    if (dur < bestMs) bestMs = dur;
+  }
+  return bestMs / 1000;
+}
+
+/** Delta of the cumulative-distance reading across samples in [startMs, endMs]. */
+function distanceWithin(
+  samples: RecordingSample[],
+  startMs: number,
+  endMs: number,
+): number {
+  let first: number | null = null;
+  let last: number | null = null;
+  for (const s of samples) {
+    if (s.t < startMs || s.t > endMs) continue;
+    if (s.distanceM != null) {
+      if (first == null) first = s.distanceM;
+      last = s.distanceM;
+    }
+  }
+  return first != null && last != null ? last - first : 0;
 }
 
 /**

@@ -212,6 +212,39 @@ import { GpsTracker, RecordingService, UploadQueue } from 'recording';
           <div class="px-5 pb-2 text-center text-sm text-slate-400 tabular-nums">
             Total {{ durationText() }}
           </div>
+
+          @if (lapToast(); as toast) {
+            <div
+              class="mx-5 mb-3 px-3 py-2 rounded-lg text-center tabular-nums"
+              [class.bg-emerald-900\/40]="toast.isNewBest"
+              [class.border-emerald-600\/50]="toast.isNewBest"
+              [class.bg-slate-900\/60]="!toast.isNewBest"
+              [class.border-slate-700\/50]="!toast.isNewBest"
+              class="border"
+            >
+              @if (toast.isNewBest) {
+                <div class="text-sm font-semibold text-emerald-300">
+                  🏆 New best lap!
+                </div>
+              }
+              <div class="text-xs"
+                [class.text-emerald-200]="toast.isNewBest"
+                [class.text-slate-300]="!toast.isNewBest"
+              >
+                Lap {{ toast.index }}: {{ formatDur(toast.durationSec) }}
+                @if (toast.deltaSec != null) {
+                  ·
+                  <span
+                    [class.text-emerald-400]="toast.deltaSec < 0"
+                    [class.text-rose-400]="toast.deltaSec > 0"
+                  >
+                    {{ toast.deltaSec > 0 ? '+' : '' }}{{ toast.deltaSec }}s vs best
+                  </span>
+                }
+              </div>
+            </div>
+          }
+
           @if (currentLapStats(); as ls) {
             <div
               class="mx-5 mb-3 px-3 py-2 rounded-lg bg-slate-900/60 border border-amber-700/40 grid grid-cols-4 gap-2 text-center tabular-nums"
@@ -221,6 +254,15 @@ import { GpsTracker, RecordingService, UploadQueue } from 'recording';
                   Lap {{ currentLap() }}
                 </div>
                 <div class="text-sm font-semibold">{{ lapDurationText() }}</div>
+                @if (lapDelta(); as d) {
+                  <div
+                    class="text-[10px] font-medium tabular-nums"
+                    [class.text-emerald-400]="d.meters >= 0"
+                    [class.text-rose-400]="d.meters < 0"
+                  >
+                    {{ d.meters > 0 ? '+' : '' }}{{ d.meters }} m vs L{{ d.referenceLap }}
+                  </div>
+                }
               </div>
               <div>
                 <div class="text-[10px] uppercase tracking-wider text-slate-500">
@@ -334,6 +376,8 @@ export class FeatureRecord {
   protected readonly lapDurationText = computed(() =>
     formatDuration(this.currentLapStats()?.durationSec ?? 0),
   );
+  protected readonly lapDelta = this.recordingService.lapDelta;
+  protected readonly lapToast = this.recordingService.lapToast;
 
   async scan(): Promise<void> {
     this.errorMsg.set(null);
@@ -446,6 +490,11 @@ export class FeatureRecord {
 
   markLap(): void {
     this.recordingService.markLap();
+  }
+
+  /** Template helper for formatting the lap toast's seconds count. */
+  protected formatDur(seconds: number): string {
+    return formatDuration(seconds);
   }
 }
 
