@@ -18,6 +18,7 @@ export type RecordTile =
   | 'cadence'
   | 'speed'
   | 'speed-gauge'
+  | 'speed-ring'
   | 'distance'
   | 'lap-time'
   | 'total-time'
@@ -29,6 +30,7 @@ export const ALL_RECORD_TILES: { id: RecordTile; label: string }[] = [
   { id: 'cadence', label: 'Cadence' },
   { id: 'speed', label: 'Speed (number)' },
   { id: 'speed-gauge', label: 'Speed (tachometer)' },
+  { id: 'speed-ring', label: 'Speed (progress ring)' },
   { id: 'distance', label: 'Distance' },
   { id: 'lap-time', label: 'Lap time' },
   { id: 'total-time', label: 'Total time' },

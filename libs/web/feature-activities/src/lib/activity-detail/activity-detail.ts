@@ -53,13 +53,13 @@ const CHART_SPECS: ChartSpec[] = [
   ],
   template: `
     <div class="mb-4">
-      <a routerLink="/activities" class="text-sm text-slate-500 hover:underline">
+      <a routerLink="/activities" class="text-sm text-on-surface-variant hover:underline">
         ← Back to activities
       </a>
     </div>
 
     @if (loading()) {
-      <div class="rounded-lg border border-slate-200 bg-white p-10 text-center text-slate-500">
+      <div class="rounded-lg border border-white/5 velo-glass p-10 text-center text-on-surface-variant">
         @if (importStatus(); as s) {
           <p>{{ s }}</p>
         } @else {
@@ -67,15 +67,15 @@ const CHART_SPECS: ChartSpec[] = [
         }
       </div>
     } @else if (error()) {
-      <p class="text-rose-600">{{ error() }}</p>
+      <p class="text-rose-300">{{ error() }}</p>
     } @else if (activity(); as a) {
       <header class="mb-6">
-        <h1 class="text-2xl font-semibold">{{ a.name }}</h1>
-        <p class="text-sm text-slate-500">
+        <h1 class="font-sora text-3xl font-bold tracking-tight text-on-surface">{{ a.name }}</h1>
+        <p class="text-sm text-on-surface-variant">
           {{ a.startTime | date: 'fullDate' }} · {{ a.startTime | date: 'shortTime' }}
           · {{ a.sportType }}
           @if (a.trainerActivity) {
-            · <span class="text-slate-400">indoor</span>
+            · <span class="text-on-surface-variant">indoor</span>
           }
         </p>
         @if (hasWeather()) {
@@ -85,96 +85,96 @@ const CHART_SPECS: ChartSpec[] = [
               @if (a.tempC != null) {
                 <strong>{{ a.tempC | number: '1.0-0' }}°C</strong>
               }
-              <span class="text-slate-500">{{ weatherLabel(a.weatherCode) }}</span>
+              <span class="text-on-surface-variant">{{ weatherLabel(a.weatherCode) }}</span>
             </span>
             @if (a.windSpeedKmh != null) {
               <span>
                 💨 <strong>{{ a.windSpeedKmh | number: '1.0-0' }} km/h</strong>
-                <span class="text-slate-500">{{ windCardinal(a.windDirectionDeg) }}</span>
+                <span class="text-on-surface-variant">{{ windCardinal(a.windDirectionDeg) }}</span>
                 @if (a.windGustKmh != null && a.windGustKmh > a.windSpeedKmh) {
-                  <span class="text-slate-500">· gust {{ a.windGustKmh | number: '1.0-0' }}</span>
+                  <span class="text-on-surface-variant">· gust {{ a.windGustKmh | number: '1.0-0' }}</span>
                 }
               </span>
             }
             @if (a.humidityPct != null) {
-              <span class="text-slate-500">{{ a.humidityPct | number: '1.0-0' }}% humidity</span>
+              <span class="text-on-surface-variant">{{ a.humidityPct | number: '1.0-0' }}% humidity</span>
             }
             @if (a.precipMm != null && a.precipMm > 0) {
-              <span class="text-slate-500">{{ a.precipMm | number: '1.1-1' }} mm precip</span>
+              <span class="text-on-surface-variant">{{ a.precipMm | number: '1.1-1' }} mm precip</span>
             }
           </p>
         }
       </header>
 
       <section class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-        <div class="rounded-lg border border-slate-200 bg-white p-4">
-          <div class="text-xs uppercase tracking-wide text-slate-500">Distance</div>
-          <div class="text-xl font-semibold tabular-nums">
-            {{ (a.distanceM / 1000) | number: '1.2-2' }} <span class="text-sm font-normal text-slate-500">km</span>
+        <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+          <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Distance</div>
+          <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+            {{ (a.distanceM / 1000) | number: '1.2-2' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">km</span>
           </div>
         </div>
-        <div class="rounded-lg border border-slate-200 bg-white p-4">
-          <div class="text-xs uppercase tracking-wide text-slate-500">Moving time</div>
-          <div class="text-xl font-semibold tabular-nums">{{ formatDuration(a.durationSec) }}</div>
+        <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+          <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Moving time</div>
+          <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">{{ formatDuration(a.durationSec) }}</div>
         </div>
-        <div class="rounded-lg border border-slate-200 bg-white p-4">
-          <div class="text-xs uppercase tracking-wide text-slate-500">Elevation</div>
-          <div class="text-xl font-semibold tabular-nums">
+        <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+          <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Elevation</div>
+          <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
             @if (a.elevationGainM != null) {
-              {{ a.elevationGainM | number: '1.0-0' }} <span class="text-sm font-normal text-slate-500">m</span>
+              {{ a.elevationGainM | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">m</span>
             } @else {
-              <span class="text-slate-400 text-base">—</span>
+              <span class="text-on-surface-variant text-base">—</span>
             }
           </div>
         </div>
-        <div class="rounded-lg border border-slate-200 bg-white p-4">
-          <div class="text-xs uppercase tracking-wide text-slate-500">Avg speed</div>
-          <div class="text-xl font-semibold tabular-nums">
+        <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+          <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Avg speed</div>
+          <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
             @if (a.avgSpeedMps != null) {
-              {{ (a.avgSpeedMps * 3.6) | number: '1.1-1' }} <span class="text-sm font-normal text-slate-500">km/h</span>
+              {{ (a.avgSpeedMps * 3.6) | number: '1.1-1' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">km/h</span>
             } @else {
-              <span class="text-slate-400 text-base">—</span>
+              <span class="text-on-surface-variant text-base">—</span>
             }
           </div>
         </div>
 
-        <div class="rounded-lg border border-slate-200 bg-white p-4">
-          <div class="text-xs uppercase tracking-wide text-slate-500">Avg power</div>
-          <div class="text-xl font-semibold tabular-nums">
+        <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+          <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Avg power</div>
+          <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
             @if (a.avgWatts != null) {
-              {{ a.avgWatts | number: '1.0-0' }} <span class="text-sm font-normal text-slate-500">W</span>
+              {{ a.avgWatts | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">W</span>
             } @else {
-              <span class="text-slate-400 text-base">—</span>
+              <span class="text-on-surface-variant text-base">—</span>
             }
           </div>
         </div>
-        <div class="rounded-lg border border-slate-200 bg-white p-4">
-          <div class="text-xs uppercase tracking-wide text-slate-500">Weighted avg</div>
-          <div class="text-xl font-semibold tabular-nums">
+        <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+          <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Weighted avg</div>
+          <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
             @if (a.weightedAvgWatts != null) {
-              {{ a.weightedAvgWatts | number: '1.0-0' }} <span class="text-sm font-normal text-slate-500">W</span>
+              {{ a.weightedAvgWatts | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">W</span>
             } @else {
-              <span class="text-slate-400 text-base">—</span>
+              <span class="text-on-surface-variant text-base">—</span>
             }
           </div>
         </div>
-        <div class="rounded-lg border border-slate-200 bg-white p-4">
-          <div class="text-xs uppercase tracking-wide text-slate-500">Avg HR</div>
-          <div class="text-xl font-semibold tabular-nums">
+        <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+          <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Avg HR</div>
+          <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
             @if (a.avgHeartrate != null) {
-              {{ a.avgHeartrate | number: '1.0-0' }} <span class="text-sm font-normal text-slate-500">bpm</span>
+              {{ a.avgHeartrate | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">bpm</span>
             } @else {
-              <span class="text-slate-400 text-base">—</span>
+              <span class="text-on-surface-variant text-base">—</span>
             }
           </div>
         </div>
-        <div class="rounded-lg border border-slate-200 bg-white p-4">
-          <div class="text-xs uppercase tracking-wide text-slate-500">Energy</div>
-          <div class="text-xl font-semibold tabular-nums">
+        <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+          <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Energy</div>
+          <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
             @if (a.kilojoules != null) {
-              {{ a.kilojoules | number: '1.0-0' }} <span class="text-sm font-normal text-slate-500">kJ</span>
+              {{ a.kilojoules | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">kJ</span>
             } @else {
-              <span class="text-slate-400 text-base">—</span>
+              <span class="text-on-surface-variant text-base">—</span>
             }
           </div>
         </div>
@@ -182,17 +182,17 @@ const CHART_SPECS: ChartSpec[] = [
 
       @if (routeCoords(); as coords) {
         <section class="mb-8">
-          <h2 class="text-lg font-semibold mb-3">Route</h2>
+          <h2 class="font-grotesk text-label-caps text-on-surface uppercase mb-3">Route</h2>
           <ui-route-map [latlng]="coords" />
         </section>
       }
 
       @if (a.laps.length > 0) {
         <section class="mb-8">
-          <h2 class="text-lg font-semibold mb-3">Laps</h2>
-          <div class="rounded-lg border border-slate-200 bg-white overflow-hidden">
+          <h2 class="font-grotesk text-label-caps text-on-surface uppercase mb-3">Laps</h2>
+          <div class="rounded-lg border border-white/5 velo-glass overflow-hidden">
             <table class="w-full text-sm">
-              <thead class="bg-slate-50 text-slate-500 text-left text-xs uppercase tracking-wide">
+              <thead class="bg-white/5 text-on-surface-variant text-left text-xs uppercase tracking-wide">
                 <tr>
                   <th class="px-3 py-2 font-medium">#</th>
                   <th class="px-3 py-2 font-medium">Distance</th>
@@ -212,22 +212,22 @@ const CHART_SPECS: ChartSpec[] = [
                     <td class="px-3 py-2">
                       @if (lap.avgSpeedMps != null) {
                         {{ (lap.avgSpeedMps * 3.6) | number: '1.1-1' }} km/h
-                      } @else { <span class="text-slate-400">—</span> }
+                      } @else { <span class="text-on-surface-variant">—</span> }
                     </td>
                     <td class="px-3 py-2">
                       @if (lap.avgWatts != null) {
                         {{ lap.avgWatts | number: '1.0-0' }} W
-                      } @else { <span class="text-slate-400">—</span> }
+                      } @else { <span class="text-on-surface-variant">—</span> }
                     </td>
                     <td class="px-3 py-2">
                       @if (lap.avgHeartrate != null) {
                         {{ lap.avgHeartrate | number: '1.0-0' }}
-                      } @else { <span class="text-slate-400">—</span> }
+                      } @else { <span class="text-on-surface-variant">—</span> }
                     </td>
                     <td class="px-3 py-2">
                       @if (lap.elevationGainM != null) {
                         {{ lap.elevationGainM | number: '1.0-0' }} m
-                      } @else { <span class="text-slate-400">—</span> }
+                      } @else { <span class="text-on-surface-variant">—</span> }
                     </td>
                   </tr>
                 }
@@ -240,8 +240,8 @@ const CHART_SPECS: ChartSpec[] = [
       @if (charts().length > 0) {
         <section>
           <div class="flex items-baseline justify-between mb-3">
-            <h2 class="text-lg font-semibold">Streams</h2>
-            <p class="text-xs text-slate-500 tabular-nums">
+            <h2 class="font-grotesk text-label-caps text-on-surface uppercase">Streams</h2>
+            <p class="text-xs text-on-surface-variant tabular-nums">
               {{ sampleCount() | number }} samples
             </p>
           </div>

@@ -9,6 +9,7 @@ import { WeatherService } from 'weather';
 import { compassCardinal, describeWeather } from 'data-models';
 import { ConfigService, type RecordTile } from 'api-client';
 import { SpeedGaugeComponent } from '../speed-gauge/speed-gauge.component';
+import { SpeedRingComponent } from '../speed-ring/speed-ring.component';
 
 interface TileDef {
   label: string;
@@ -17,15 +18,16 @@ interface TileDef {
 }
 
 const TILE_DEFS: Record<RecordTile, TileDef> = {
-  hr: { label: 'Heart rate', color: 'text-rose-400', unit: 'bpm' },
-  cadence: { label: 'Cadence', color: 'text-amber-400', unit: 'rpm' },
-  speed: { label: 'Speed', color: 'text-sky-400', unit: 'km/h' },
-  'speed-gauge': { label: 'Speed', color: 'text-sky-400', unit: '' },
-  distance: { label: 'Distance', color: 'text-emerald-400', unit: 'km' },
-  'lap-time': { label: 'Lap time', color: 'text-purple-400', unit: '' },
-  'total-time': { label: 'Total time', color: 'text-slate-300', unit: '' },
-  'avg-speed': { label: 'Avg speed', color: 'text-sky-300', unit: 'km/h' },
-  'avg-hr': { label: 'Avg HR', color: 'text-rose-300', unit: 'bpm' },
+  hr: { label: 'Heart rate', color: 'text-on-surface-variant', unit: 'bpm' },
+  cadence: { label: 'Cadence', color: 'text-on-surface-variant', unit: 'rpm' },
+  speed: { label: 'Speed', color: 'text-on-surface-variant', unit: 'km/h' },
+  'speed-gauge': { label: 'Speed', color: 'text-on-surface-variant', unit: '' },
+  'speed-ring': { label: 'Speed', color: 'text-on-surface-variant', unit: '' },
+  distance: { label: 'Distance', color: 'text-on-surface-variant', unit: 'km' },
+  'lap-time': { label: 'Lap time', color: 'text-on-surface-variant', unit: '' },
+  'total-time': { label: 'Total time', color: 'text-on-surface-variant', unit: '' },
+  'avg-speed': { label: 'Avg speed', color: 'text-on-surface-variant', unit: 'km/h' },
+  'avg-hr': { label: 'Avg HR', color: 'text-on-surface-variant', unit: 'bpm' },
 };
 
 /**
@@ -36,7 +38,7 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
  */
 @Component({
   selector: 'lib-feature-record',
-  imports: [DecimalPipe, RouterLink, SpeedGaugeComponent],
+  imports: [DecimalPipe, RouterLink, SpeedGaugeComponent, SpeedRingComponent],
   template: `
     <div class="min-h-screen velo-carbon text-on-surface flex flex-col font-inter">
       <!-- VITALOGY brand bar — glass header with menu / italic logo / cog -->
@@ -122,6 +124,8 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
           @for (tile of tiles(); track tile) {
             @if (tile === 'speed-gauge') {
               <mobile-speed-gauge [speedKmh]="speedKmh() ?? 0" />
+            } @else if (tile === 'speed-ring') {
+              <mobile-speed-ring [speedKmh]="speedKmh() ?? 0" />
             } @else {
               <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
                 <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">
@@ -289,7 +293,8 @@ export class FeatureRecord {
       case 'speed':
         return formatNumber(this.speedKmh() ?? 0, 1);
       case 'speed-gauge':
-        // Rendered via <mobile-speed-gauge> — no text value path.
+      case 'speed-ring':
+        // Rendered via dedicated components — no text value path.
         return '';
       case 'distance':
         return formatNumber(this.distanceKm(), 2);

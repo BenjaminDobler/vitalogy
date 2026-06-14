@@ -5,18 +5,19 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
   selector: 'ui-shell',
   imports: [RouterLink, RouterLinkActive],
   template: `
-    <div class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      <header class="border-b border-slate-200 bg-white">
+    <div class="min-h-screen flex flex-col velo-carbon text-on-surface font-inter">
+      <header class="border-b border-white/5 velo-glass sticky top-0 z-30">
         <div class="mx-auto max-w-6xl px-6 py-4 flex items-center gap-8">
-          <a routerLink="/" class="font-semibold tracking-tight text-lg">
-            🚴 Vitalogy
-          </a>
-          <nav class="flex gap-1 text-sm">
+          <a
+            routerLink="/"
+            class="font-sora italic uppercase tracking-tighter text-xl text-velo-lime"
+          >VITALOGY</a>
+          <nav class="flex gap-1 font-grotesk text-label-caps uppercase">
             @for (item of nav; track item.path) {
               <a
                 [routerLink]="item.path"
-                routerLinkActive="bg-slate-900 text-white"
-                class="px-3 py-1.5 rounded-md hover:bg-slate-100"
+                routerLinkActive="bg-velo-lime text-velo-on-lime"
+                class="px-4 py-2 rounded-full hover:bg-white/10 transition-colors"
               >
                 {{ item.label }}
               </a>
