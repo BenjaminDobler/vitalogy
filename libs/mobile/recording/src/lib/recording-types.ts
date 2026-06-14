@@ -29,6 +29,8 @@ export interface RecordingSession {
    * Example: [600000, 1200000] → three laps: 0–10min, 10–20min, 20–end.
    */
   lapSplits: number[];
+  /** Latest weather snapshot taken during the session, if any. */
+  weather?: import('data-models').WeatherSnapshot | null;
 }
 
 export interface LiveStats {

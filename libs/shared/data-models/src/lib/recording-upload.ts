@@ -1,3 +1,5 @@
+import type { WeatherSnapshot } from './weather.js';
+
 /**
  * Wire DTO for a recorded session uploaded by the mobile app.
  * Designed so the backend can build a complete Activity + Stream tree from
@@ -21,6 +23,8 @@ export interface UploadActivityRequest {
    * Empty / undefined = the whole session is lap 1 (and no Lap rows get created).
    */
   lapSplits?: number[];
+  /** Weather snapshot — most-recent observation during the session. */
+  weather?: WeatherSnapshot;
 }
 
 export interface UploadSample {

@@ -86,6 +86,22 @@ model Activity {
   avgCadence      Float?
   trainerActivity Boolean       @default(false)
   commute         Boolean       @default(false)
+
+  // Weather snapshot at session start. Filled by mobile recorder (Open-Meteo)
+  // or later by a backend enricher for Strava imports.
+  // windDirectionDeg follows the meteorological convention: where the wind
+  // comes FROM (0=N, 90=E, 180=S, 270=W).
+  tempC               Float?
+  apparentTempC       Float?
+  humidityPct         Float?
+  windSpeedKmh        Float?
+  windDirectionDeg    Float?
+  windGustKmh         Float?
+  precipMm            Float?
+  weatherCode         Int?         // WMO code (0=clear, 95=thunderstorm, etc.)
+  weatherSource       String?      // e.g. 'open-meteo:current'
+  weatherObservedAt   DateTime?
+
   raw             Json?         // full source payload for re-processing later
 
   createdAt       DateTime      @default(now())

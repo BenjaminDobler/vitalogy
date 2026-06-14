@@ -92,6 +92,7 @@ export class UploadQueue {
       endedAt: new Date(session.endedAt ?? Date.now()).toISOString(),
       samples: session.samples,
       lapSplits: session.lapSplits,
+      weather: session.weather ?? undefined,
     };
     await this.api.post<UploadActivityResponse>('/api/activities', req);
   }

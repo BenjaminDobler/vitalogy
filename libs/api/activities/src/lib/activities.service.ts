@@ -74,6 +74,16 @@ export class ActivitiesService {
         avgCadence: stats.avgCadence,
         trainerActivity: false,
         commute: false,
+        tempC: req.weather?.tempC ?? null,
+        apparentTempC: req.weather?.apparentTempC ?? null,
+        humidityPct: req.weather?.humidityPct ?? null,
+        windSpeedKmh: req.weather?.windSpeedKmh ?? null,
+        windDirectionDeg: req.weather?.windDirectionDeg ?? null,
+        windGustKmh: req.weather?.windGustKmh ?? null,
+        precipMm: req.weather?.precipMm ?? null,
+        weatherCode: req.weather?.weatherCode ?? null,
+        weatherSource: req.weather?.source ?? null,
+        weatherObservedAt: req.weather?.observedAt ? new Date(req.weather.observedAt) : null,
         raw: { samples: req.samples, lapSplits: req.lapSplits ?? [] } as object,
       },
     });
@@ -372,6 +382,16 @@ function toDto(a: {
   avgCadence: number | null;
   trainerActivity: boolean;
   commute: boolean;
+  tempC: number | null;
+  apparentTempC: number | null;
+  humidityPct: number | null;
+  windSpeedKmh: number | null;
+  windDirectionDeg: number | null;
+  windGustKmh: number | null;
+  precipMm: number | null;
+  weatherCode: number | null;
+  weatherSource: string | null;
+  weatherObservedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }): Activity {
@@ -379,6 +399,7 @@ function toDto(a: {
     ...a,
     source: a.source as Activity['source'],
     startTime: a.startTime.toISOString(),
+    weatherObservedAt: a.weatherObservedAt ? a.weatherObservedAt.toISOString() : null,
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),
   };

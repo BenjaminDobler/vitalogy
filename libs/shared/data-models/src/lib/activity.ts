@@ -42,6 +42,17 @@ export interface Activity {
   avgCadence?: number | null;
   trainerActivity: boolean;
   commute: boolean;
+  // Weather snapshot at session start (when known).
+  tempC?: number | null;
+  apparentTempC?: number | null;
+  humidityPct?: number | null;
+  windSpeedKmh?: number | null;
+  windDirectionDeg?: number | null;
+  windGustKmh?: number | null;
+  precipMm?: number | null;
+  weatherCode?: number | null;
+  weatherSource?: string | null;
+  weatherObservedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

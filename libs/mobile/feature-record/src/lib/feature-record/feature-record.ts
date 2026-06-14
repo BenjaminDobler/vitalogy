@@ -8,6 +8,8 @@ import {
   KnownSensorStore,
 } from 'ble';
 import { GpsTracker, RecordingService, UploadQueue } from 'recording';
+import { WeatherService } from 'weather';
+import { compassCardinal, describeWeather } from 'data-models';
 
 /**
  * Single-screen MVP: scan → connect → live readings → record / stop.
@@ -166,6 +168,28 @@ import { GpsTracker, RecordingService, UploadQueue } from 'recording';
             </ul>
           </section>
         }
+      }
+
+      @if (recording() && weatherLatest(); as w) {
+        <div class="mx-5 mb-3 px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-800 flex items-center justify-between tabular-nums">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-lg">{{ weatherEmoji(w.weatherCode) }}</span>
+            <span class="font-medium">
+              {{ w.tempC != null ? ((w.tempC | number: '1.0-0') + '°C') : '—' }}
+            </span>
+            <span class="text-xs text-slate-500">{{ weatherLabel(w.weatherCode) }}</span>
+          </div>
+          <div class="flex items-center gap-1 text-sm">
+            <span class="text-lg">💨</span>
+            <span class="font-medium">
+              {{ w.windSpeedKmh != null ? ((w.windSpeedKmh | number: '1.0-0') + ' km/h') : '—' }}
+            </span>
+            <span class="text-xs text-slate-500">{{ windCardinal(w.windDirectionDeg) }}</span>
+            @if (w.windGustKmh != null && w.windSpeedKmh != null && w.windGustKmh > w.windSpeedKmh) {
+              <span class="text-xs text-slate-500">· gust {{ w.windGustKmh | number: '1.0-0' }}</span>
+            }
+          </div>
+        </div>
       }
 
       @if (connected().length > 0) {
@@ -329,8 +353,10 @@ export class FeatureRecord {
   private readonly knownStore = inject(KnownSensorStore);
   private readonly uploadQueue = inject(UploadQueue);
   private readonly gps = inject(GpsTracker);
+  private readonly weather = inject(WeatherService);
 
   protected readonly gpsActive = this.gps.active;
+  protected readonly weatherLatest = this.weather.latest;
 
   protected readonly connected = this.ble.connected;
   protected readonly scanning = this.ble.scanning;
@@ -470,6 +496,14 @@ export class FeatureRecord {
       // Kick off GPS in parallel — non-blocking, recording proceeds even if
       // location permission is denied (indoor / trainer rides).
       void this.gps.start();
+      // Weather refreshes every 5 min using the most recent GPS sample.
+      this.weather.start(() => {
+        const s = this.recordingService.latest();
+        if (s?.lat != null && s?.lng != null) {
+          return { lat: s.lat, lng: s.lng };
+        }
+        return null;
+      });
     } catch (err) {
       this.errorMsg.set(toMessage(err));
     }
@@ -477,6 +511,10 @@ export class FeatureRecord {
 
   async stopRecording(): Promise<void> {
     await this.gps.stop();
+    this.weather.stop();
+    // Stamp the latest weather snapshot onto the session so it goes up with the upload.
+    const latestWeather = this.weatherLatest();
+    if (latestWeather) this.recordingService.pushWeather(latestWeather);
     const session = this.recordingService.stop();
     if (session) {
       void this.uploadQueue.enqueue(session);
@@ -495,6 +533,18 @@ export class FeatureRecord {
   /** Template helper for formatting the lap toast's seconds count. */
   protected formatDur(seconds: number): string {
     return formatDuration(seconds);
+  }
+
+  protected weatherEmoji(code: number | null | undefined): string {
+    return describeWeather(code).emoji;
+  }
+
+  protected weatherLabel(code: number | null | undefined): string {
+    return describeWeather(code).label;
+  }
+
+  protected windCardinal(deg: number | null | undefined): string {
+    return compassCardinal(deg);
   }
 }
 

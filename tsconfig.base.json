@@ -26,7 +26,8 @@
       "recording": ["./libs/mobile/recording/src/index.ts"],
       "feature-record": ["./libs/mobile/feature-record/src/index.ts"],
       "api-client": ["./libs/mobile/api-client/src/index.ts"],
-      "feature-settings": ["./libs/mobile/feature-settings/src/index.ts"]
+      "feature-settings": ["./libs/mobile/feature-settings/src/index.ts"],
+      "weather": ["./libs/mobile/weather/src/index.ts"]
     }
   }
 }

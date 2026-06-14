@@ -3,7 +3,13 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { RouteMapComponent, StreamChartComponent } from 'ui';
-import type { ActivityDetail, ActivityStream, StreamType } from 'data-models';
+import {
+  compassCardinal,
+  describeWeather,
+  type ActivityDetail,
+  type ActivityStream,
+  type StreamType,
+} from 'data-models';
 
 interface ImportResult {
   streams: number;
@@ -72,6 +78,32 @@ const CHART_SPECS: ChartSpec[] = [
             · <span class="text-slate-400">indoor</span>
           }
         </p>
+        @if (hasWeather()) {
+          <p class="mt-2 text-sm flex flex-wrap items-center gap-x-3 gap-y-1 tabular-nums">
+            <span>
+              {{ weatherEmoji(a.weatherCode) }}
+              @if (a.tempC != null) {
+                <strong>{{ a.tempC | number: '1.0-0' }}°C</strong>
+              }
+              <span class="text-slate-500">{{ weatherLabel(a.weatherCode) }}</span>
+            </span>
+            @if (a.windSpeedKmh != null) {
+              <span>
+                💨 <strong>{{ a.windSpeedKmh | number: '1.0-0' }} km/h</strong>
+                <span class="text-slate-500">{{ windCardinal(a.windDirectionDeg) }}</span>
+                @if (a.windGustKmh != null && a.windGustKmh > a.windSpeedKmh) {
+                  <span class="text-slate-500">· gust {{ a.windGustKmh | number: '1.0-0' }}</span>
+                }
+              </span>
+            }
+            @if (a.humidityPct != null) {
+              <span class="text-slate-500">{{ a.humidityPct | number: '1.0-0' }}% humidity</span>
+            }
+            @if (a.precipMm != null && a.precipMm > 0) {
+              <span class="text-slate-500">{{ a.precipMm | number: '1.1-1' }} mm precip</span>
+            }
+          </p>
+        }
       </header>
 
       <section class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
@@ -254,6 +286,29 @@ export class ActivityDetailComponent {
     const first = this.activity()?.streams[0];
     return Array.isArray(first?.data) ? first!.data.length : 0;
   });
+
+  protected readonly hasWeather = computed(() => {
+    const a = this.activity();
+    if (!a) return false;
+    return (
+      a.tempC != null ||
+      a.windSpeedKmh != null ||
+      a.weatherCode != null ||
+      a.humidityPct != null
+    );
+  });
+
+  protected weatherEmoji(code: number | null | undefined): string {
+    return describeWeather(code).emoji;
+  }
+
+  protected weatherLabel(code: number | null | undefined): string {
+    return describeWeather(code).label;
+  }
+
+  protected windCardinal(deg: number | null | undefined): string {
+    return compassCardinal(deg);
+  }
 
   /**
    * Numeric streams paired with their styling spec, in render order.

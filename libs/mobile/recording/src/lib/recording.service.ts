@@ -49,6 +49,7 @@ export class RecordingService {
       startedAt: now,
       samples: [],
       lapSplits: [],
+      weather: null,
     };
     this.session.set(session);
     this.latest.set(null);
@@ -79,6 +80,13 @@ export class RecordingService {
     this.partial.lat = lat;
     this.partial.lng = lng;
     if (altitudeM != null) this.partial.altitudeM = altitudeM;
+  }
+
+  /** Stamp the latest weather snapshot onto the session. */
+  pushWeather(snapshot: import('data-models').WeatherSnapshot): void {
+    const s = this.session();
+    if (!s) return;
+    this.session.set({ ...s, weather: snapshot });
   }
 
   /**

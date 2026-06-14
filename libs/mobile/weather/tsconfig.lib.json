@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "../../../dist/out-tsc/libs/mobile/feature-record",
+    "outDir": "../../../dist/out-tsc/libs/mobile/weather",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -13,15 +13,6 @@
   "references": [
     {
       "path": "../../shared/data-models/tsconfig.lib.json"
-    },
-    {
-      "path": "../weather/tsconfig.lib.json"
-    },
-    {
-      "path": "../recording/tsconfig.lib.json"
-    },
-    {
-      "path": "../ble/tsconfig.lib.json"
     }
   ]
 }
