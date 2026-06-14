@@ -210,8 +210,45 @@ import { GpsTracker, RecordingService, UploadQueue } from 'recording';
 
         @if (recording()) {
           <div class="px-5 pb-2 text-center text-sm text-slate-400 tabular-nums">
-            {{ durationText() }} · Lap {{ currentLap() }}
+            Total {{ durationText() }}
           </div>
+          @if (currentLapStats(); as ls) {
+            <div
+              class="mx-5 mb-3 px-3 py-2 rounded-lg bg-slate-900/60 border border-amber-700/40 grid grid-cols-4 gap-2 text-center tabular-nums"
+            >
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-amber-400">
+                  Lap {{ currentLap() }}
+                </div>
+                <div class="text-sm font-semibold">{{ lapDurationText() }}</div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-slate-500">
+                  Dist
+                </div>
+                <div class="text-sm font-semibold">
+                  {{ ls.distanceM / 1000 | number: '1.2-2' }}
+                  <span class="text-xs font-normal text-slate-500">km</span>
+                </div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-slate-500">
+                  Avg HR
+                </div>
+                <div class="text-sm font-semibold">
+                  {{ ls.avgHr != null ? (ls.avgHr | number: '1.0-0') : '—' }}
+                </div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-slate-500">
+                  Avg cad
+                </div>
+                <div class="text-sm font-semibold">
+                  {{ ls.avgCadenceRpm != null ? (ls.avgCadenceRpm | number: '1.0-0') : '—' }}
+                </div>
+              </div>
+            </div>
+          }
         }
 
         <div class="px-5 pb-8 sticky bottom-0 bg-gradient-to-t from-slate-950 to-transparent pt-6">
@@ -293,6 +330,10 @@ export class FeatureRecord {
     formatDuration(this.stats()?.durationSec ?? 0),
   );
   protected readonly currentLap = this.recordingService.currentLap;
+  protected readonly currentLapStats = this.recordingService.currentLapStats;
+  protected readonly lapDurationText = computed(() =>
+    formatDuration(this.currentLapStats()?.durationSec ?? 0),
+  );
 
   async scan(): Promise<void> {
     this.errorMsg.set(null);

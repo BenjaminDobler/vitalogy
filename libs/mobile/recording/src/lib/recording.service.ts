@@ -104,6 +104,21 @@ export class RecordingService {
     return s.lapSplits.length + 1;
   });
 
+  /**
+   * Live stats for just the current (in-progress) lap. `distanceM` is the
+   * delta within the lap window, not the cumulative session distance.
+   * Updates every second via the same wall-clock tick that drives `stats`.
+   */
+  readonly currentLapStats = computed<LiveStats | null>(() => {
+    const s = this.session();
+    if (!s) return null;
+    const splits = s.lapSplits;
+    const lapStartT = splits.length > 0 ? splits[splits.length - 1] : 0;
+    const lapDurationMs = this.now() - s.startedAt - lapStartT;
+    const lapSamples = s.samples.filter((sm) => sm.t >= lapStartT);
+    return computeLapStats(lapSamples, lapDurationMs);
+  });
+
   private ingest(r: BleReading): void {
     if (!this.session()) return;
     if (r.kind === 'HRM') {
@@ -132,6 +147,56 @@ export class RecordingService {
     this.latest.set(sample);
     this.lastFlushT = t;
   }
+}
+
+/**
+ * Stats for a lap window: same shape as computeStats but `distanceM` is
+ * the *delta* across this lap (last cumulative - first cumulative), not the
+ * absolute cumulative reading. Same for avg speed.
+ */
+function computeLapStats(samples: RecordingSample[], durationMs: number): LiveStats {
+  const durationSec = Math.max(0, Math.round(durationMs / 1000));
+  let sumHr = 0;
+  let countHr = 0;
+  let maxHr = 0;
+  let sumCadence = 0;
+  let countCadence = 0;
+  let maxSpeed = 0;
+  let firstDistance: number | null = null;
+  let lastDistance: number | null = null;
+
+  for (const s of samples) {
+    if (s.hr != null) {
+      sumHr += s.hr;
+      countHr++;
+      if (s.hr > maxHr) maxHr = s.hr;
+    }
+    if (s.cadenceRpm != null && s.cadenceRpm > 0) {
+      sumCadence += s.cadenceRpm;
+      countCadence++;
+    }
+    if (s.speedMps != null && s.speedMps > maxSpeed) maxSpeed = s.speedMps;
+    if (s.distanceM != null) {
+      if (firstDistance == null) firstDistance = s.distanceM;
+      lastDistance = s.distanceM;
+    }
+  }
+
+  const lapDistance =
+    firstDistance != null && lastDistance != null
+      ? Math.max(0, lastDistance - firstDistance)
+      : 0;
+
+  return {
+    durationSec,
+    distanceM: lapDistance,
+    avgHr: countHr > 0 ? sumHr / countHr : undefined,
+    maxHr: countHr > 0 ? maxHr : undefined,
+    avgCadenceRpm: countCadence > 0 ? sumCadence / countCadence : undefined,
+    avgSpeedMps:
+      lapDistance > 0 && durationSec > 0 ? lapDistance / durationSec : undefined,
+    maxSpeedMps: maxSpeed > 0 ? maxSpeed : undefined,
+  };
 }
 
 function computeStats(samples: RecordingSample[], durationMs: number): LiveStats {
