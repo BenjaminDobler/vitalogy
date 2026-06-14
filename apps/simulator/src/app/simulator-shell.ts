@@ -12,7 +12,12 @@ import { FormsModule } from '@angular/forms';
 import { FeatureRecord } from 'feature-record';
 import { ReplayDriver, SensorSim } from 'dev-sim';
 import { RecordingService } from 'recording';
-import { ConfigService } from 'api-client';
+import {
+  ALL_RECORD_TILES,
+  ConfigService,
+  type RecordLayout,
+  type RecordTile,
+} from 'api-client';
 
 type SimMode = 'synthetic' | 'replay';
 
@@ -178,6 +183,92 @@ type SimMode = 'synthetic' | 'replay';
           </section>
         }
 
+        <section class="border border-slate-200 rounded-lg p-3 space-y-3">
+          <div class="text-xs uppercase tracking-wider text-slate-500">Display</div>
+
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Layout</div>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                (click)="setRecordLayout('two-col')"
+                class="flex-1 px-2 py-1 rounded-md border text-xs"
+                [class.bg-slate-900]="layout() === 'two-col'"
+                [class.text-white]="layout() === 'two-col'"
+                [class.border-slate-900]="layout() === 'two-col'"
+                [class.border-slate-300]="layout() !== 'two-col'"
+              >2 columns</button>
+              <button
+                type="button"
+                (click)="setRecordLayout('one-col')"
+                class="flex-1 px-2 py-1 rounded-md border text-xs"
+                [class.bg-slate-900]="layout() === 'one-col'"
+                [class.text-white]="layout() === 'one-col'"
+                [class.border-slate-900]="layout() === 'one-col'"
+                [class.border-slate-300]="layout() !== 'one-col'"
+              >1 col · big</button>
+            </div>
+          </div>
+
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Tiles</div>
+            <div class="space-y-1">
+              @for (t of allTiles; track t.id) {
+                <label class="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-slate-100 cursor-pointer">
+                  <span class="text-xs">{{ t.label }}</span>
+                  <input
+                    type="checkbox"
+                    [checked]="isTileEnabled(t.id)"
+                    (change)="toggleTile(t.id, toBool($event))"
+                    class="w-4 h-4 accent-sky-500"
+                  />
+                </label>
+              }
+            </div>
+          </div>
+        </section>
+
+        <section class="border border-slate-200 rounded-lg p-3 space-y-3">
+          <div class="text-xs uppercase tracking-wider text-slate-500">Auto-pause</div>
+          <label class="flex items-center justify-between gap-2">
+            <span class="text-xs">Pause when speed &lt; threshold</span>
+            <input
+              type="checkbox"
+              [checked]="autoPauseEnabled()"
+              (change)="setAutoPauseEnabled(toBool($event))"
+              class="w-4 h-4 accent-sky-500"
+            />
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block">
+              <span class="block text-[10px] text-slate-500">Threshold km/h</span>
+              <input
+                type="number"
+                min="0"
+                max="50"
+                step="0.5"
+                [value]="autoPauseThresholdKmh()"
+                (change)="setAutoPauseThresholdKmh(toNum($event))"
+                [disabled]="!autoPauseEnabled()"
+                class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs tabular-nums disabled:opacity-50"
+              />
+            </label>
+            <label class="block">
+              <span class="block text-[10px] text-slate-500">Delay sec</span>
+              <input
+                type="number"
+                min="1"
+                max="60"
+                step="1"
+                [value]="autoPauseDelaySec()"
+                (change)="setAutoPauseDelaySec(toNum($event))"
+                [disabled]="!autoPauseEnabled()"
+                class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs tabular-nums disabled:opacity-50"
+              />
+            </label>
+          </div>
+        </section>
+
         <section class="mt-auto">
           @if (!running()) {
             <button
@@ -231,6 +322,50 @@ export class SimulatorShell implements OnInit, OnDestroy {
   protected readonly running = computed(
     () => this.sim.running() || this.replay.running(),
   );
+
+  // Display config — live-bound to ConfigService so toggles flow straight
+  // into the embedded FeatureRecord.
+  protected readonly allTiles = ALL_RECORD_TILES;
+  protected readonly layout = this.config.recordLayout;
+  protected readonly autoPauseEnabled = this.config.autoPauseEnabled;
+  protected readonly autoPauseThresholdKmh = this.config.autoPauseThresholdKmh;
+  protected readonly autoPauseDelaySec = this.config.autoPauseDelaySec;
+
+  protected isTileEnabled(id: RecordTile): boolean {
+    return this.config.recordTiles().includes(id);
+  }
+
+  protected async toggleTile(id: RecordTile, on: boolean): Promise<void> {
+    const current = this.config.recordTiles();
+    if (on) {
+      if (current.includes(id)) return;
+      const order = ALL_RECORD_TILES.map((t) => t.id);
+      const next = order.filter((t) => current.includes(t) || t === id);
+      await this.config.setRecordTiles(next);
+    } else {
+      const next = current.filter((t) => t !== id);
+      if (next.length === 0) return;
+      await this.config.setRecordTiles(next);
+    }
+  }
+
+  protected async setRecordLayout(l: RecordLayout): Promise<void> {
+    await this.config.setRecordLayout(l);
+  }
+
+  protected async setAutoPauseEnabled(on: boolean): Promise<void> {
+    await this.config.setAutoPauseEnabled(on);
+  }
+  protected async setAutoPauseThresholdKmh(v: number): Promise<void> {
+    await this.config.setAutoPauseThresholdKmh(v);
+  }
+  protected async setAutoPauseDelaySec(v: number): Promise<void> {
+    await this.config.setAutoPauseDelaySec(v);
+  }
+
+  protected toBool(ev: Event): boolean {
+    return (ev.target as HTMLInputElement).checked;
+  }
 
   async ngOnInit(): Promise<void> {
     await this.reloadActivities();
