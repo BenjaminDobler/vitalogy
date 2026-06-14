@@ -3,6 +3,8 @@ import { DecimalPipe } from '@angular/common';
 import {
   BleManager,
   DiscoveredSensor,
+  KnownSensor,
+  KnownSensorStore,
 } from 'ble';
 import { RecordingService } from 'recording';
 
@@ -41,7 +43,11 @@ import { RecordingService } from 'recording';
           </h2>
           @if (connected().length === 0) {
             <p class="text-sm text-slate-400">
-              No sensors yet. Tap <em>Scan</em> to find your TICKR + Blue SC.
+              @if (availableKnown().length > 0) {
+                Tap a recent sensor below to reconnect, or <em>Scan</em> for new ones.
+              } @else {
+                No sensors yet. Tap <em>Scan</em> to find your TICKR + Blue SC.
+              }
             </p>
           } @else {
             <ul class="space-y-1.5">
@@ -66,6 +72,43 @@ import { RecordingService } from 'recording';
             </ul>
           }
         </section>
+
+        @if (availableKnown().length > 0) {
+          <section class="px-5 pb-4">
+            <h2 class="text-xs uppercase tracking-wider text-slate-500 mb-2">
+              Recent
+            </h2>
+            <ul class="space-y-1.5">
+              @for (k of availableKnown(); track k.deviceId) {
+                <li class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2">
+                  <div>
+                    <div class="text-sm font-medium">
+                      {{ k.name ?? '(unnamed)' }}
+                    </div>
+                    <div class="text-xs text-slate-500">
+                      {{ k.kinds.join(', ') }}
+                    </div>
+                  </div>
+                  <div class="flex gap-1">
+                    <button
+                      (click)="reconnect(k)"
+                      [disabled]="connecting() === k.deviceId"
+                      class="text-xs px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 disabled:opacity-50"
+                    >
+                      {{ connecting() === k.deviceId ? '…' : 'Reconnect' }}
+                    </button>
+                    <button
+                      (click)="forget(k.deviceId)"
+                      class="text-xs px-2 py-1.5 rounded-md text-slate-500 hover:bg-slate-800"
+                    >
+                      Forget
+                    </button>
+                  </div>
+                </li>
+              }
+            </ul>
+          </section>
+        }
 
         @if (newlyDiscovered().length > 0) {
           <section class="px-5 pb-4">
@@ -171,9 +214,11 @@ import { RecordingService } from 'recording';
 export class FeatureRecord {
   private readonly ble = inject(BleManager);
   private readonly recordingService = inject(RecordingService);
+  private readonly knownStore = inject(KnownSensorStore);
 
   protected readonly connected = this.ble.connected;
   protected readonly scanning = this.ble.scanning;
+  protected readonly known = this.knownStore.known;
 
   protected readonly discovered = signal<DiscoveredSensor[]>([]);
   protected readonly connecting = signal<string | null>(null);
@@ -182,6 +227,12 @@ export class FeatureRecord {
   protected readonly newlyDiscovered = computed(() => {
     const connectedIds = new Set(this.connected().map((c) => c.deviceId));
     return this.discovered().filter((d) => !connectedIds.has(d.deviceId));
+  });
+
+  /** Known sensors that aren't currently connected — these are the ones we show in "Recent". */
+  protected readonly availableKnown = computed(() => {
+    const connectedIds = new Set(this.connected().map((c) => c.deviceId));
+    return this.known().filter((k) => !connectedIds.has(k.deviceId));
   });
 
   protected readonly recording = computed(() => this.recordingService.session() != null);
@@ -217,17 +268,65 @@ export class FeatureRecord {
     this.connecting.set(d.deviceId);
     try {
       await this.ble.connect(d.deviceId, d.name);
-      for (const kind of d.kinds.filter(
+      const measurementKinds = d.kinds.filter(
         (k): k is 'HRM' | 'CSC' => k === 'HRM' || k === 'CSC',
-      )) {
+      );
+      for (const kind of measurementKinds) {
         await this.ble.subscribe(d.deviceId, kind);
       }
-      this.discovered.update((list) => list.filter((x) => x.deviceId !== d.deviceId));
+      this.discovered.update((list) =>
+        list.filter((x) => x.deviceId !== d.deviceId),
+      );
+      // Remember this sensor for one-tap reconnect next time.
+      this.knownStore.remember({
+        deviceId: d.deviceId,
+        name: d.name,
+        kinds: measurementKinds,
+      });
     } catch (err) {
       this.errorMsg.set(toMessage(err));
     } finally {
       this.connecting.set(null);
     }
+  }
+
+  /**
+   * One-tap reconnect to a sensor we've connected to before. We run a brief
+   * targeted scan first — iOS only allows BleClient.connect() to a deviceId
+   * that's currently in its discovery cache, so the scan "wakes" the OS-level
+   * registration even if the sensor was already advertising.
+   */
+  async reconnect(k: KnownSensor): Promise<void> {
+    this.errorMsg.set(null);
+    this.connecting.set(k.deviceId);
+    try {
+      // 4s targeted scan with the sensor's kinds. If the sensor is awake and
+      // advertising we'll see it; if not, the connect below will fail and the
+      // user knows to wake the sensor.
+      const measurementKinds = k.kinds.filter(
+        (kind): kind is 'HRM' | 'CSC' => kind === 'HRM' || kind === 'CSC',
+      );
+      await this.ble.scan(measurementKinds, 4000);
+      await this.ble.connect(k.deviceId, k.name);
+      for (const kind of measurementKinds) {
+        await this.ble.subscribe(k.deviceId, kind);
+      }
+      this.knownStore.remember({
+        deviceId: k.deviceId,
+        name: k.name,
+        kinds: measurementKinds,
+      });
+    } catch (err) {
+      this.errorMsg.set(
+        `Reconnect failed (wake the sensor and try again): ${toMessage(err)}`,
+      );
+    } finally {
+      this.connecting.set(null);
+    }
+  }
+
+  forget(deviceId: string): void {
+    this.knownStore.forget(deviceId);
   }
 
   async disconnect(deviceId: string): Promise<void> {

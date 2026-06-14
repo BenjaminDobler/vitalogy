@@ -92,6 +92,7 @@
     "@capacitor/cli": "^8.4.0",
     "@capacitor/core": "^8.4.0",
     "@capacitor/geolocation": "^8.2.0",
+    "@capacitor/ios": "^8.4.0",
     "@google/genai": "^2.7.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.4",
