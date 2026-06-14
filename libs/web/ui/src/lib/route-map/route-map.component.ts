@@ -23,7 +23,7 @@ import {
   template: `
     <div
       #mapEl
-      class="w-full h-80 rounded-lg overflow-hidden border border-slate-200 z-0"
+      class="w-full h-80 rounded-xl overflow-hidden border border-white/10 z-0"
     ></div>
   `,
 })
@@ -52,25 +52,28 @@ export class RouteMapComponent {
 
         const sampled = downsample(coords, 1000);
         const polyline = L.polyline(sampled, {
-          color: '#fc5200',
+          // Electric lime to match the VeloPulse brand color.
+          color: '#c3f400',
           weight: 4,
-          opacity: 0.9,
+          opacity: 0.95,
         }).addTo(map);
         map.fitBounds(polyline.getBounds(), { padding: [20, 20] });
 
+        // Start = lime (matches the polyline so it reads as "start of line").
         L.circleMarker(coords[0], {
-          color: '#fff',
+          color: '#0f0f0f',
           weight: 2,
-          fillColor: '#16a34a',
+          fillColor: '#c3f400',
           fillOpacity: 1,
-          radius: 6,
+          radius: 7,
         }).addTo(map);
+        // End = white ring with dark fill, like a HUD checkpoint.
         L.circleMarker(coords[coords.length - 1], {
-          color: '#fff',
+          color: '#c3f400',
           weight: 2,
-          fillColor: '#dc2626',
+          fillColor: '#0f0f0f',
           fillOpacity: 1,
-          radius: 6,
+          radius: 7,
         }).addTo(map);
       });
 

@@ -12,25 +12,25 @@ import { DecimalPipe } from '@angular/common';
   selector: 'ui-stream-chart',
   imports: [DecimalPipe],
   template: `
-    <div class="rounded-lg border border-slate-200 bg-white p-4">
+    <div class="velo-glass rounded-xl p-5">
       <div class="flex items-baseline justify-between mb-3 gap-4 flex-wrap">
-        <h3 class="font-medium text-sm" [style.color]="color()">{{ label() }}</h3>
-        <div class="text-xs text-slate-500 tabular-nums flex gap-3">
+        <h3 class="font-grotesk text-label-caps uppercase" [style.color]="color()">{{ label() }}</h3>
+        <div class="font-grotesk text-mono-data text-on-surface-variant tabular-nums flex gap-3 uppercase">
           <span>
             avg
-            <strong class="text-slate-800">
+            <strong class="text-on-surface">
               {{ stats().avg | number: precision() }}
             </strong>{{ unit() }}
           </span>
           <span>
             min
-            <strong class="text-slate-800">
+            <strong class="text-on-surface">
               {{ stats().min | number: precision() }}
             </strong>{{ unit() }}
           </span>
           <span>
             max
-            <strong class="text-slate-800">
+            <strong class="text-on-surface">
               {{ stats().max | number: precision() }}
             </strong>{{ unit() }}
           </span>
@@ -47,7 +47,7 @@ import { DecimalPipe } from '@angular/common';
           [attr.y2]="avgY()"
           x1="0"
           x2="1000"
-          stroke="#cbd5e1"
+          stroke="rgba(255,255,255,0.1)"
           stroke-width="1"
           stroke-dasharray="3 4"
           vector-effect="non-scaling-stroke"
@@ -56,7 +56,7 @@ import { DecimalPipe } from '@angular/common';
         <path
           [attr.d]="areaPath()"
           [attr.fill]="color()"
-          fill-opacity="0.08"
+          fill-opacity="0.18"
         />
         <!-- The line itself. -->
         <polyline

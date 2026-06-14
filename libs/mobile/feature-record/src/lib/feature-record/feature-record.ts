@@ -40,10 +40,21 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
   selector: 'lib-feature-record',
   imports: [DecimalPipe, RouterLink, SpeedGaugeComponent, SpeedRingComponent],
   template: `
-    <div class="min-h-screen velo-carbon text-on-surface flex flex-col font-inter">
-      <!-- VITALOGY brand bar — glass header with menu / italic logo / cog -->
+    <div class="min-h-screen velo-carbon text-on-surface flex flex-col font-inter relative">
+      <!-- VITALOGY brand bar — hamburger / italic logo / cog -->
       <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between border-b border-white/5">
-        <span class="w-10"></span>
+        @if (!recording()) {
+          <button
+            type="button"
+            (click)="menuOpen.set(true)"
+            class="w-10 h-10 rounded-full velo-glass flex items-center justify-center hover:bg-white/10"
+            aria-label="Open menu"
+          >
+            <span class="material-symbols-outlined text-on-surface text-[20px]">menu</span>
+          </button>
+        } @else {
+          <span class="w-10"></span>
+        }
         <h1 class="font-sora italic uppercase tracking-tighter text-2xl text-velo-lime">VITALOGY</h1>
         @if (!recording()) {
           <a
@@ -57,6 +68,63 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
           <span class="w-10"></span>
         }
       </header>
+
+      <!-- Drawer overlay -->
+      @if (menuOpen()) {
+        <button
+          type="button"
+          (click)="menuOpen.set(false)"
+          class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          aria-label="Close menu"
+        ></button>
+        <aside
+          class="fixed left-0 top-0 bottom-0 z-50 w-72 max-w-[85vw] velo-glass pt-safe-6 px-5 pb-8 flex flex-col gap-4 animate-in slide-in-from-left"
+        >
+          <div class="flex items-center justify-between pb-4 border-b border-white/5">
+            <h2 class="font-sora italic uppercase tracking-tighter text-xl text-velo-lime">
+              VITALOGY
+            </h2>
+            <button
+              type="button"
+              (click)="menuOpen.set(false)"
+              class="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center"
+              aria-label="Close menu"
+            >
+              <span class="material-symbols-outlined text-on-surface text-[20px]">close</span>
+            </button>
+          </div>
+          <nav class="flex flex-col gap-1">
+            <a
+              routerLink="/record"
+              (click)="menuOpen.set(false)"
+              class="flex items-center gap-3 px-3 py-3 rounded-lg bg-velo-lime/10 text-velo-lime"
+            >
+              <span class="material-symbols-outlined">directions_bike</span>
+              <span class="font-grotesk text-label-caps uppercase">Ride</span>
+            </a>
+            <a
+              routerLink="/settings"
+              (click)="menuOpen.set(false)"
+              class="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 text-on-surface"
+            >
+              <span class="material-symbols-outlined">settings</span>
+              <span class="font-grotesk text-label-caps uppercase">Settings</span>
+            </a>
+            <a
+              routerLink="/settings"
+              fragment="sensors"
+              (click)="menuOpen.set(false)"
+              class="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 text-on-surface"
+            >
+              <span class="material-symbols-outlined">bluetooth_searching</span>
+              <span class="font-grotesk text-label-caps uppercase">Sensors</span>
+            </a>
+          </nav>
+          <div class="mt-auto text-xs text-on-surface-variant font-grotesk uppercase tracking-wider">
+            v0.0.0 · vitalogy
+          </div>
+        </aside>
+      }
 
       @if (errorMsg(); as msg) {
         <p class="mx-5 mt-3 text-sm text-rose-300 font-grotesk">{{ msg }}</p>
@@ -320,6 +388,7 @@ export class FeatureRecord {
   protected readonly uploading = this.uploadQueue.uploading;
   protected readonly uploadError = this.uploadQueue.lastError;
   protected readonly errorMsg = signal<string | null>(null);
+  protected readonly menuOpen = signal(false);
 
   protected readonly recording = computed(() => this.recordingService.session() != null);
   protected readonly latest = this.recordingService.latest;
