@@ -1,16 +1,14 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import {
-  BleManager,
-  DiscoveredSensor,
-  KnownSensor,
-  KnownSensorStore,
-} from 'ble';
+import { BleManager } from 'ble';
+// KnownSensorStore is no longer referenced here — sensor management moved
+// to feature-settings. The service is still provided globally via 'root'.
 import { GpsTracker, RecordingService, UploadQueue } from 'recording';
 import { WeatherService } from 'weather';
 import { compassCardinal, describeWeather } from 'data-models';
 import { ConfigService, type RecordTile } from 'api-client';
+import { SpeedGaugeComponent } from '../speed-gauge/speed-gauge.component';
 
 interface TileDef {
   label: string;
@@ -22,6 +20,7 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
   hr: { label: 'Heart rate', color: 'text-rose-400', unit: 'bpm' },
   cadence: { label: 'Cadence', color: 'text-amber-400', unit: 'rpm' },
   speed: { label: 'Speed', color: 'text-sky-400', unit: 'km/h' },
+  'speed-gauge': { label: 'Speed', color: 'text-sky-400', unit: '' },
   distance: { label: 'Distance', color: 'text-emerald-400', unit: 'km' },
   'lap-time': { label: 'Lap time', color: 'text-purple-400', unit: '' },
   'total-time': { label: 'Total time', color: 'text-slate-300', unit: '' },
@@ -37,27 +36,18 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
  */
 @Component({
   selector: 'lib-feature-record',
-  imports: [DecimalPipe, RouterLink],
+  imports: [DecimalPipe, RouterLink, SpeedGaugeComponent],
   template: `
     <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between">
         <h1 class="text-xl font-semibold">Record</h1>
-        <div class="flex gap-2">
-          @if (!recording()) {
-            <button
-              (click)="scan()"
-              [disabled]="scanning()"
-              class="text-sm px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
-            >
-              {{ scanning() ? 'Scanning…' : 'Scan' }}
-            </button>
-            <a
-              routerLink="/settings"
-              class="text-sm w-9 h-9 rounded-md bg-slate-800 hover:bg-slate-700 flex items-center justify-center"
-              aria-label="Settings"
-            >⚙</a>
-          }
-        </div>
+        @if (!recording()) {
+          <a
+            routerLink="/settings"
+            class="text-sm w-9 h-9 rounded-md bg-slate-800 hover:bg-slate-700 flex items-center justify-center"
+            aria-label="Settings"
+          >⚙</a>
+        }
       </header>
 
       @if (errorMsg(); as msg) {
@@ -81,111 +71,17 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
         </button>
       }
 
-      @if (!recording()) {
-        <section class="px-5 pb-4">
-          <h2 class="text-xs uppercase tracking-wider text-slate-500 mb-2">
-            Connected
-          </h2>
-          @if (connected().length === 0) {
-            <p class="text-sm text-slate-400">
-              @if (availableKnown().length > 0) {
-                Tap a recent sensor below to reconnect, or <em>Scan</em> for new ones.
-              } @else {
-                No sensors yet. Tap <em>Scan</em> to find your TICKR + Blue SC.
-              }
-            </p>
-          } @else {
-            <ul class="space-y-1.5">
-              @for (c of connected(); track c.deviceId) {
-                <li class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2">
-                  <div>
-                    <div class="text-sm font-medium">
-                      {{ c.name ?? c.deviceId }}
-                    </div>
-                    <div class="text-xs text-slate-500">
-                      {{ c.subscribed.join(' · ') || 'connected, not subscribed' }}
-                    </div>
-                  </div>
-                  <button
-                    (click)="disconnect(c.deviceId)"
-                    class="text-xs px-2 py-1 rounded-md text-rose-400 hover:bg-slate-800"
-                  >
-                    Disconnect
-                  </button>
-                </li>
-              }
-            </ul>
-          }
-        </section>
-
-        @if (availableKnown().length > 0) {
-          <section class="px-5 pb-4">
-            <h2 class="text-xs uppercase tracking-wider text-slate-500 mb-2">
-              Recent
-            </h2>
-            <ul class="space-y-1.5">
-              @for (k of availableKnown(); track k.deviceId) {
-                <li class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2">
-                  <div>
-                    <div class="text-sm font-medium">
-                      {{ k.name ?? '(unnamed)' }}
-                    </div>
-                    <div class="text-xs text-slate-500">
-                      {{ k.kinds.join(', ') }}
-                    </div>
-                  </div>
-                  <div class="flex gap-1">
-                    <button
-                      (click)="reconnect(k)"
-                      [disabled]="connecting() === k.deviceId"
-                      class="text-xs px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 disabled:opacity-50"
-                    >
-                      {{ connecting() === k.deviceId ? '…' : 'Reconnect' }}
-                    </button>
-                    <button
-                      (click)="forget(k.deviceId)"
-                      class="text-xs px-2 py-1.5 rounded-md text-slate-500 hover:bg-slate-800"
-                    >
-                      Forget
-                    </button>
-                  </div>
-                </li>
-              }
-            </ul>
-          </section>
-        }
-
-        @if (newlyDiscovered().length > 0) {
-          <section class="px-5 pb-4">
-            <h2 class="text-xs uppercase tracking-wider text-slate-500 mb-2">
-              Discovered
-            </h2>
-            <ul class="space-y-1.5">
-              @for (d of newlyDiscovered(); track d.deviceId) {
-                <li class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2">
-                  <div>
-                    <div class="text-sm font-medium">
-                      {{ d.name ?? '(unnamed)' }}
-                    </div>
-                    <div class="text-xs text-slate-500">
-                      {{ d.kinds.join(', ') }}
-                      @if (d.rssi != null) {
-                        · {{ d.rssi }} dBm
-                      }
-                    </div>
-                  </div>
-                  <button
-                    (click)="connect(d)"
-                    [disabled]="connecting() === d.deviceId"
-                    class="text-xs px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
-                  >
-                    {{ connecting() === d.deviceId ? '…' : 'Connect' }}
-                  </button>
-                </li>
-              }
-            </ul>
-          </section>
-        }
+      @if (!recording() && connected().length === 0) {
+        <div class="mx-5 mb-3 rounded-lg border border-dashed border-slate-700 px-4 py-6 text-center">
+          <p class="text-sm text-slate-400 mb-3">
+            No sensors connected.
+          </p>
+          <a
+            routerLink="/settings"
+            fragment="sensors"
+            class="inline-block px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 text-sm"
+          >Manage sensors →</a>
+        </div>
       }
 
       @if (recording() && weatherLatest(); as w) {
@@ -217,6 +113,9 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
           [class.grid-cols-1]="layout() === 'one-col'"
         >
           @for (tile of tiles(); track tile) {
+            @if (tile === 'speed-gauge') {
+              <mobile-speed-gauge [speedKmh]="speedKmh() ?? 0" />
+            } @else {
             <div class="rounded-xl bg-slate-900 p-4">
               <div
                 class="text-[10px] uppercase tracking-wider"
@@ -237,6 +136,7 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
                 }
               </div>
             </div>
+            }
           }
         </section>
 
@@ -369,7 +269,6 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
 export class FeatureRecord {
   private readonly ble = inject(BleManager);
   private readonly recordingService = inject(RecordingService);
-  private readonly knownStore = inject(KnownSensorStore);
   private readonly uploadQueue = inject(UploadQueue);
   private readonly gps = inject(GpsTracker);
   private readonly weather = inject(WeatherService);
@@ -394,6 +293,9 @@ export class FeatureRecord {
         return formatNumber(this.cadence() ?? 0, 0);
       case 'speed':
         return formatNumber(this.speedKmh() ?? 0, 1);
+      case 'speed-gauge':
+        // Rendered via <mobile-speed-gauge> — no text value path.
+        return '';
       case 'distance':
         return formatNumber(this.distanceKm(), 2);
       case 'lap-time':
@@ -411,27 +313,13 @@ export class FeatureRecord {
     }
   }
 
+  // The record screen only *reads* connection state — sensor management
+  // (scan / connect / reconnect / forget) lives on the Settings page.
   protected readonly connected = this.ble.connected;
-  protected readonly scanning = this.ble.scanning;
-  protected readonly known = this.knownStore.known;
   protected readonly pendingUploads = this.uploadQueue.pending;
   protected readonly uploading = this.uploadQueue.uploading;
   protected readonly uploadError = this.uploadQueue.lastError;
-
-  protected readonly discovered = signal<DiscoveredSensor[]>([]);
-  protected readonly connecting = signal<string | null>(null);
   protected readonly errorMsg = signal<string | null>(null);
-
-  protected readonly newlyDiscovered = computed(() => {
-    const connectedIds = new Set(this.connected().map((c) => c.deviceId));
-    return this.discovered().filter((d) => !connectedIds.has(d.deviceId));
-  });
-
-  /** Known sensors that aren't currently connected — these are the ones we show in "Recent". */
-  protected readonly availableKnown = computed(() => {
-    const connectedIds = new Set(this.connected().map((c) => c.deviceId));
-    return this.known().filter((k) => !connectedIds.has(k.deviceId));
-  });
 
   protected readonly recording = computed(() => this.recordingService.session() != null);
   protected readonly latest = this.recordingService.latest;
@@ -457,90 +345,6 @@ export class FeatureRecord {
   );
   protected readonly lapDelta = this.recordingService.lapDelta;
   protected readonly lapToast = this.recordingService.lapToast;
-
-  async scan(): Promise<void> {
-    this.errorMsg.set(null);
-    try {
-      const found = await this.ble.scan(['HRM', 'CSC'], 6000);
-      this.discovered.set(found);
-    } catch (err) {
-      this.errorMsg.set(toMessage(err));
-    }
-  }
-
-  async connect(d: DiscoveredSensor): Promise<void> {
-    this.errorMsg.set(null);
-    this.connecting.set(d.deviceId);
-    try {
-      await this.ble.connect(d.deviceId, d.name);
-      const measurementKinds = d.kinds.filter(
-        (k): k is 'HRM' | 'CSC' => k === 'HRM' || k === 'CSC',
-      );
-      for (const kind of measurementKinds) {
-        await this.ble.subscribe(d.deviceId, kind);
-      }
-      this.discovered.update((list) =>
-        list.filter((x) => x.deviceId !== d.deviceId),
-      );
-      // Remember this sensor for one-tap reconnect next time.
-      this.knownStore.remember({
-        deviceId: d.deviceId,
-        name: d.name,
-        kinds: measurementKinds,
-      });
-    } catch (err) {
-      this.errorMsg.set(toMessage(err));
-    } finally {
-      this.connecting.set(null);
-    }
-  }
-
-  /**
-   * One-tap reconnect to a sensor we've connected to before. We run a brief
-   * targeted scan first — iOS only allows BleClient.connect() to a deviceId
-   * that's currently in its discovery cache, so the scan "wakes" the OS-level
-   * registration even if the sensor was already advertising.
-   */
-  async reconnect(k: KnownSensor): Promise<void> {
-    this.errorMsg.set(null);
-    this.connecting.set(k.deviceId);
-    try {
-      // 4s targeted scan with the sensor's kinds. If the sensor is awake and
-      // advertising we'll see it; if not, the connect below will fail and the
-      // user knows to wake the sensor.
-      const measurementKinds = k.kinds.filter(
-        (kind): kind is 'HRM' | 'CSC' => kind === 'HRM' || kind === 'CSC',
-      );
-      await this.ble.scan(measurementKinds, 4000);
-      await this.ble.connect(k.deviceId, k.name);
-      for (const kind of measurementKinds) {
-        await this.ble.subscribe(k.deviceId, kind);
-      }
-      this.knownStore.remember({
-        deviceId: k.deviceId,
-        name: k.name,
-        kinds: measurementKinds,
-      });
-    } catch (err) {
-      this.errorMsg.set(
-        `Reconnect failed (wake the sensor and try again): ${toMessage(err)}`,
-      );
-    } finally {
-      this.connecting.set(null);
-    }
-  }
-
-  forget(deviceId: string): void {
-    this.knownStore.forget(deviceId);
-  }
-
-  async disconnect(deviceId: string): Promise<void> {
-    try {
-      await this.ble.disconnect(deviceId);
-    } catch (err) {
-      this.errorMsg.set(toMessage(err));
-    }
-  }
 
   async startRecording(): Promise<void> {
     this.errorMsg.set(null);

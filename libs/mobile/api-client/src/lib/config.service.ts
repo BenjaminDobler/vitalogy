@@ -17,6 +17,7 @@ export type RecordTile =
   | 'hr'
   | 'cadence'
   | 'speed'
+  | 'speed-gauge'
   | 'distance'
   | 'lap-time'
   | 'total-time'
@@ -26,7 +27,8 @@ export type RecordTile =
 export const ALL_RECORD_TILES: { id: RecordTile; label: string }[] = [
   { id: 'hr', label: 'Heart rate' },
   { id: 'cadence', label: 'Cadence' },
-  { id: 'speed', label: 'Speed' },
+  { id: 'speed', label: 'Speed (number)' },
+  { id: 'speed-gauge', label: 'Speed (tachometer)' },
   { id: 'distance', label: 'Distance' },
   { id: 'lap-time', label: 'Lap time' },
   { id: 'total-time', label: 'Total time' },

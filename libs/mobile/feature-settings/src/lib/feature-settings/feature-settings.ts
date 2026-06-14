@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import {
@@ -8,6 +8,12 @@ import {
   type RecordLayout,
   type RecordTile,
 } from 'api-client';
+import {
+  BleManager,
+  DiscoveredSensor,
+  KnownSensor,
+  KnownSensorStore,
+} from 'ble';
 
 @Component({
   selector: 'lib-feature-settings',
@@ -23,8 +29,108 @@ import {
       </header>
 
       <section class="px-5 pb-6 space-y-8 max-w-xl">
+        <!-- Sensors -->
+        <fieldset id="sensors" class="space-y-3">
+          <legend class="text-xs uppercase tracking-wider text-slate-500 mb-1">
+            Sensors
+          </legend>
+
+          @if (sensorError(); as msg) {
+            <p class="text-sm text-rose-400">{{ msg }}</p>
+          }
+
+          <button
+            (click)="scanForSensors()"
+            [disabled]="scanning()"
+            class="px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 text-sm disabled:opacity-50"
+          >
+            {{ scanning() ? 'Scanning…' : 'Scan' }}
+          </button>
+
+          @if (connected().length > 0) {
+            <div>
+              <h3 class="text-xs text-slate-500 mt-3 mb-2">Connected</h3>
+              <ul class="space-y-1.5">
+                @for (c of connected(); track c.deviceId) {
+                  <li class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2">
+                    <div>
+                      <div class="text-sm font-medium">{{ c.name ?? c.deviceId }}</div>
+                      <div class="text-xs text-slate-500">
+                        {{ c.subscribed.join(' · ') || 'connected, not subscribed' }}
+                      </div>
+                    </div>
+                    <button
+                      (click)="disconnectSensor(c.deviceId)"
+                      class="text-xs px-2 py-1 rounded-md text-rose-400 hover:bg-slate-800"
+                    >Disconnect</button>
+                  </li>
+                }
+              </ul>
+            </div>
+          }
+
+          @if (availableKnown().length > 0) {
+            <div>
+              <h3 class="text-xs text-slate-500 mt-3 mb-2">Recent</h3>
+              <ul class="space-y-1.5">
+                @for (k of availableKnown(); track k.deviceId) {
+                  <li class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2">
+                    <div>
+                      <div class="text-sm font-medium">{{ k.name ?? '(unnamed)' }}</div>
+                      <div class="text-xs text-slate-500">{{ k.kinds.join(', ') }}</div>
+                    </div>
+                    <div class="flex gap-1">
+                      <button
+                        (click)="reconnectSensor(k)"
+                        [disabled]="connecting() === k.deviceId"
+                        class="text-xs px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 disabled:opacity-50"
+                      >
+                        {{ connecting() === k.deviceId ? '…' : 'Reconnect' }}
+                      </button>
+                      <button
+                        (click)="forgetSensor(k.deviceId)"
+                        class="text-xs px-2 py-1.5 rounded-md text-slate-500 hover:bg-slate-800"
+                      >Forget</button>
+                    </div>
+                  </li>
+                }
+              </ul>
+            </div>
+          }
+
+          @if (newlyDiscovered().length > 0) {
+            <div>
+              <h3 class="text-xs text-slate-500 mt-3 mb-2">Discovered</h3>
+              <ul class="space-y-1.5">
+                @for (d of newlyDiscovered(); track d.deviceId) {
+                  <li class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2">
+                    <div>
+                      <div class="text-sm font-medium">{{ d.name ?? '(unnamed)' }}</div>
+                      <div class="text-xs text-slate-500">
+                        {{ d.kinds.join(', ') }}
+                        @if (d.rssi != null) { · {{ d.rssi }} dBm }
+                      </div>
+                    </div>
+                    <button
+                      (click)="connectSensor(d)"
+                      [disabled]="connecting() === d.deviceId"
+                      class="text-xs px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+                    >{{ connecting() === d.deviceId ? '…' : 'Connect' }}</button>
+                  </li>
+                }
+              </ul>
+            </div>
+          }
+
+          @if (connected().length === 0 && availableKnown().length === 0 && newlyDiscovered().length === 0) {
+            <p class="text-xs text-slate-500">
+              No sensors yet. Wake your TICKR + Blue SC and tap Scan.
+            </p>
+          }
+        </fieldset>
+
         <!-- Backend -->
-        <fieldset class="space-y-4">
+        <fieldset class="space-y-4 border-t border-slate-800 pt-6">
           <legend class="text-xs uppercase tracking-wider text-slate-500">
             Backend
           </legend>
@@ -194,6 +300,8 @@ import {
 })
 export class FeatureSettings {
   private readonly config = inject(ConfigService);
+  private readonly ble = inject(BleManager);
+  private readonly knownStore = inject(KnownSensorStore);
 
   protected readonly defaultUserId = DEFAULT_USER_ID;
   protected readonly allTiles = ALL_RECORD_TILES;
@@ -207,10 +315,86 @@ export class FeatureSettings {
   protected readonly recordTiles = this.config.recordTiles;
   protected readonly recordLayout = this.config.recordLayout;
 
+  protected readonly connected = this.ble.connected;
+  protected readonly scanning = this.ble.scanning;
+  protected readonly known = this.knownStore.known;
+  protected readonly discovered = signal<DiscoveredSensor[]>([]);
+  protected readonly connecting = signal<string | null>(null);
+  protected readonly sensorError = signal<string | null>(null);
+
+  protected readonly newlyDiscovered = computed(() => {
+    const ids = new Set(this.connected().map((c) => c.deviceId));
+    return this.discovered().filter((d) => !ids.has(d.deviceId));
+  });
+  protected readonly availableKnown = computed(() => {
+    const ids = new Set(this.connected().map((c) => c.deviceId));
+    return this.known().filter((k) => !ids.has(k.deviceId));
+  });
+
   protected readonly saving = signal(false);
   protected readonly testing = signal(false);
   protected readonly status = signal<string | null>(null);
   protected readonly isError = signal(false);
+
+  async scanForSensors(): Promise<void> {
+    this.sensorError.set(null);
+    try {
+      const found = await this.ble.scan(['HRM', 'CSC'], 6000);
+      this.discovered.set(found);
+    } catch (err) {
+      this.sensorError.set(toMessage(err));
+    }
+  }
+
+  async connectSensor(d: DiscoveredSensor): Promise<void> {
+    this.sensorError.set(null);
+    this.connecting.set(d.deviceId);
+    try {
+      await this.ble.connect(d.deviceId, d.name);
+      const kinds = d.kinds.filter(
+        (k): k is 'HRM' | 'CSC' => k === 'HRM' || k === 'CSC',
+      );
+      for (const k of kinds) await this.ble.subscribe(d.deviceId, k);
+      this.discovered.update((list) => list.filter((x) => x.deviceId !== d.deviceId));
+      this.knownStore.remember({ deviceId: d.deviceId, name: d.name, kinds });
+    } catch (err) {
+      this.sensorError.set(toMessage(err));
+    } finally {
+      this.connecting.set(null);
+    }
+  }
+
+  async reconnectSensor(k: KnownSensor): Promise<void> {
+    this.sensorError.set(null);
+    this.connecting.set(k.deviceId);
+    try {
+      const kinds = k.kinds.filter(
+        (kind): kind is 'HRM' | 'CSC' => kind === 'HRM' || kind === 'CSC',
+      );
+      await this.ble.scan(kinds, 4000);
+      await this.ble.connect(k.deviceId, k.name);
+      for (const kind of kinds) await this.ble.subscribe(k.deviceId, kind);
+      this.knownStore.remember({ deviceId: k.deviceId, name: k.name, kinds });
+    } catch (err) {
+      this.sensorError.set(
+        `Reconnect failed (wake the sensor and try again): ${toMessage(err)}`,
+      );
+    } finally {
+      this.connecting.set(null);
+    }
+  }
+
+  forgetSensor(deviceId: string): void {
+    this.knownStore.forget(deviceId);
+  }
+
+  async disconnectSensor(deviceId: string): Promise<void> {
+    try {
+      await this.ble.disconnect(deviceId);
+    } catch (err) {
+      this.sensorError.set(toMessage(err));
+    }
+  }
 
   async save(): Promise<void> {
     this.saving.set(true);
