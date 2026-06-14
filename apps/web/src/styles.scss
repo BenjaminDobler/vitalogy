@@ -4,7 +4,7 @@
 
 @import 'leaflet/dist/leaflet.css';
 
-/* === VeloPulse: obsidian + electric lime, mirrors apps/mobile === */
+/* === VeloPulse — mirrors apps/mobile === */
 
 html, body {
   background-color: #0f0f0f;
@@ -14,8 +14,15 @@ html, body {
 
 .velo-carbon {
   background-color: #0f0f0f;
-  background-image: radial-gradient(circle at 2px 2px, rgba(255,255,255,0.03) 1px, transparent 0);
-  background-size: 24px 24px;
+  background-image:
+    linear-gradient(135deg,
+      rgba(255,255,255,0.03) 25%, transparent 25%,
+      transparent 75%, rgba(255,255,255,0.03) 75%),
+    linear-gradient(45deg,
+      rgba(255,255,255,0.025) 25%, transparent 25%,
+      transparent 75%, rgba(255,255,255,0.025) 75%);
+  background-size: 6px 6px, 6px 6px;
+  background-position: 0 0, 3px 3px;
 }
 
 .velo-glass {
@@ -36,13 +43,9 @@ html, body {
 }
 
 /* Leaflet popup + attribution adjusted for the dark canvas. */
-.leaflet-container {
-  background: #1c1b1b;
-}
+.leaflet-container { background: #1c1b1b; }
 .leaflet-control-attribution {
   background: rgba(255, 255, 255, 0.05) !important;
   color: #c4c9ac !important;
 }
-.leaflet-control-attribution a {
-  color: #c3f400 !important;
-}
+.leaflet-control-attribution a { color: #c3f400 !important; }

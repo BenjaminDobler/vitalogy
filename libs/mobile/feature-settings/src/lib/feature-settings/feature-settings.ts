@@ -14,12 +14,13 @@ import {
   KnownSensor,
   KnownSensorStore,
 } from 'ble';
+import { BottomNavComponent } from 'feature-record';
 
 @Component({
   selector: 'lib-feature-settings',
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, BottomNavComponent],
   template: `
-    <div class="min-h-screen velo-carbon text-on-surface font-inter">
+    <div class="min-h-screen velo-carbon text-on-surface font-inter pb-24">
       <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between border-b border-white/5">
         <a
           routerLink="/record"
@@ -35,7 +36,8 @@ import {
       <section class="px-5 pb-6 space-y-8 max-w-xl">
         <!-- Sensors -->
         <fieldset id="sensors" class="space-y-3">
-          <legend class="font-grotesk text-label-caps text-velo-lime uppercase mb-1">
+          <legend class="font-grotesk text-label-caps text-velo-lime uppercase mb-1 flex items-center gap-2">
+            <span class="material-symbols-outlined text-[18px]">bluetooth_searching</span>
             Sensors
           </legend>
 
@@ -197,7 +199,8 @@ import {
 
         <!-- Auto-pause -->
         <fieldset class="space-y-3 border-t border-white/10 pt-6">
-          <legend class="font-grotesk text-label-caps text-velo-lime uppercase mb-1">
+          <legend class="font-grotesk text-label-caps text-velo-lime uppercase mb-1 flex items-center gap-2">
+            <span class="material-symbols-outlined text-[18px]">pause_circle</span>
             Auto-pause
           </legend>
 
@@ -251,7 +254,8 @@ import {
 
         <!-- Display -->
         <fieldset class="space-y-3 border-t border-white/10 pt-6">
-          <legend class="font-grotesk text-label-caps text-velo-lime uppercase mb-1">
+          <legend class="font-grotesk text-label-caps text-velo-lime uppercase mb-1 flex items-center gap-2">
+            <span class="material-symbols-outlined text-[18px]">tune</span>
             Display
           </legend>
 
@@ -299,6 +303,8 @@ import {
           </div>
         </fieldset>
       </section>
+
+      <mobile-bottom-nav />
     </div>
   `,
 })

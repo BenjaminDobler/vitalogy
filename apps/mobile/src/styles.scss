@@ -11,20 +11,30 @@ html, body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-/* Safe-area-aware padding utilities for iOS Dynamic Island + home indicator. */
+/* Safe-area-aware padding utilities. */
 .pt-safe-6 { padding-top: max(env(safe-area-inset-top), 1.5rem); }
 .pb-safe-8 { padding-bottom: max(env(safe-area-inset-bottom), 2rem); }
 
-/* === VeloPulse: glassmorphism + carbon texture === */
+/* === VeloPulse: carbon-fiber weave + glassmorphism === */
 
-/* Subtle carbon-fiber dot pattern over the obsidian background. */
+/**
+ * Carbon-fiber twill texture — two diagonal sheen layers (45° + 135°) at
+ * ~3% white, repeating every 6px. Reads as the fine woven pattern you see
+ * on premium carbon frames; falls back gracefully on lower-DPI screens.
+ */
 .velo-carbon {
   background-color: #0f0f0f;
-  background-image: radial-gradient(circle at 2px 2px, rgba(255,255,255,0.03) 1px, transparent 0);
-  background-size: 24px 24px;
+  background-image:
+    linear-gradient(135deg,
+      rgba(255,255,255,0.03) 25%, transparent 25%,
+      transparent 75%, rgba(255,255,255,0.03) 75%),
+    linear-gradient(45deg,
+      rgba(255,255,255,0.025) 25%, transparent 25%,
+      transparent 75%, rgba(255,255,255,0.025) 75%);
+  background-size: 6px 6px, 6px 6px;
+  background-position: 0 0, 3px 3px;
 }
 
-/* Glassmorphism card — semi-transparent white with backdrop blur. */
 .velo-glass {
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(20px);
@@ -32,23 +42,51 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Lime glow for hero data + primary CTAs. */
-.velo-glow-lime {
-  filter: drop-shadow(0 0 15px rgba(195, 244, 0, 0.4));
-}
-.velo-shadow-lime {
-  box-shadow: 0 8px 32px rgba(195, 244, 0, 0.25);
-}
+.velo-glow-lime { filter: drop-shadow(0 0 15px rgba(195, 244, 0, 0.4)); }
+.velo-shadow-lime { box-shadow: 0 8px 32px rgba(195, 244, 0, 0.25); }
 
-.velo-pulse {
-  animation: velo-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
+.velo-pulse { animation: velo-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 @keyframes velo-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%      { opacity: 0.7; transform: scale(1.08); }
 }
 
-/* Material Symbols icon defaults — outline weight, optical size 24. */
+/* Bottom-nav tab styles — distinct active/idle visual states. */
+.velo-bottom-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.875rem;
+  border-radius: 9999px;
+  color: rgba(196, 201, 172, 0.7);
+  transition: color 0.2s, background-color 0.2s, transform 0.1s;
+}
+.velo-bottom-tab:active { transform: scale(0.92); }
+.velo-bottom-tab-active {
+  background-color: #c3f400;
+  color: #161e00;
+}
+.velo-bottom-tab-active:active { transform: scale(0.92); }
+
+/* Drawer entrance — slide in from the left + fade in backdrop. */
+@keyframes velo-slide-in-left {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+@keyframes velo-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.velo-drawer { animation: velo-slide-in-left 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+.velo-backdrop { animation: velo-fade-in 0.2s ease-out; }
+
+/* Soft transition for tile values changing (e.g. when scrubbing). */
+.velo-tile-num {
+  transition: color 0.2s, transform 0.15s ease-out;
+}
+
+/* Material Symbols defaults. */
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }

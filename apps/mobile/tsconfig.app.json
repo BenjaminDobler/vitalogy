@@ -11,6 +11,9 @@
       "path": "../../libs/mobile/feature-settings/tsconfig.lib.json"
     },
     {
+      "path": "../../libs/mobile/feature-history/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/mobile/feature-record/tsconfig.lib.json"
     }
   ]

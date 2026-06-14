@@ -12,6 +12,11 @@ export const appRoutes: Route[] = [
       import('feature-record').then((m) => m.featureRecordRoutes),
   },
   {
+    path: 'history',
+    loadChildren: () =>
+      import('feature-history').then((m) => m.featureHistoryRoutes),
+  },
+  {
     path: 'settings',
     loadChildren: () =>
       import('feature-settings').then((m) => m.featureSettingsRoutes),

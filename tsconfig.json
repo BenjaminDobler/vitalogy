@@ -71,6 +71,9 @@
     },
     {
       "path": "./apps/simulator"
+    },
+    {
+      "path": "./libs/mobile/feature-history"
     }
   ]
 }

@@ -10,6 +10,7 @@ import { compassCardinal, describeWeather } from 'data-models';
 import { ConfigService, type RecordTile } from 'api-client';
 import { SpeedGaugeComponent } from '../speed-gauge/speed-gauge.component';
 import { SpeedRingComponent } from '../speed-ring/speed-ring.component';
+import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 
 interface TileDef {
   label: string;
@@ -38,9 +39,15 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
  */
 @Component({
   selector: 'lib-feature-record',
-  imports: [DecimalPipe, RouterLink, SpeedGaugeComponent, SpeedRingComponent],
+  imports: [
+    DecimalPipe,
+    RouterLink,
+    SpeedGaugeComponent,
+    SpeedRingComponent,
+    BottomNavComponent,
+  ],
   template: `
-    <div class="min-h-screen velo-carbon text-on-surface flex flex-col font-inter relative">
+    <div class="min-h-screen velo-carbon text-on-surface flex flex-col font-inter relative" [class.pb-24]="!recording()">
       <!-- VITALOGY brand bar — hamburger / italic logo / cog -->
       <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between border-b border-white/5">
         @if (!recording()) {
@@ -74,11 +81,11 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
         <button
           type="button"
           (click)="menuOpen.set(false)"
-          class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          class="velo-backdrop fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
           aria-label="Close menu"
         ></button>
         <aside
-          class="fixed left-0 top-0 bottom-0 z-50 w-72 max-w-[85vw] velo-glass pt-safe-6 px-5 pb-8 flex flex-col gap-4 animate-in slide-in-from-left"
+          class="velo-drawer fixed left-0 top-0 bottom-0 z-50 w-72 max-w-[85vw] velo-glass pt-safe-6 px-5 pb-8 flex flex-col gap-4"
         >
           <div class="flex items-center justify-between pb-4 border-b border-white/5">
             <h2 class="font-sora italic uppercase tracking-tighter text-xl text-velo-lime">
@@ -134,16 +141,19 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
         <button
           (click)="retryUploads()"
           [disabled]="uploading()"
-          class="mx-5 mt-3 px-4 py-3 rounded-xl velo-glass text-left disabled:opacity-50"
+          class="mx-5 mt-3 px-4 py-3 rounded-xl velo-glass text-left disabled:opacity-50 flex items-center gap-3"
         >
-          <div class="font-grotesk text-label-caps text-velo-lime uppercase">
-            {{ uploading()
-              ? 'Uploading…'
-              : pendingUploads().length + ' ride' + (pendingUploads().length === 1 ? '' : 's') + ' pending upload' }}
+          <span class="material-symbols-outlined text-velo-lime text-[24px]">cloud_upload</span>
+          <div class="flex-1">
+            <div class="font-grotesk text-label-caps text-velo-lime uppercase">
+              {{ uploading()
+                ? 'Uploading…'
+                : pendingUploads().length + ' ride' + (pendingUploads().length === 1 ? '' : 's') + ' pending upload' }}
+            </div>
+            @if (uploadError(); as e) {
+              <div class="text-xs text-on-surface-variant mt-1">{{ e }} — tap to retry</div>
+            }
           </div>
-          @if (uploadError(); as e) {
-            <div class="text-xs text-on-surface-variant mt-1">{{ e }} — tap to retry</div>
-          }
         </button>
       }
 
@@ -170,8 +180,8 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
             </span>
             <span class="text-on-surface-variant text-xs uppercase">{{ weatherLabel(w.weatherCode) }}</span>
           </div>
-          <div class="flex items-center gap-1">
-            <span class="text-lg">💨</span>
+          <div class="flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-velo-lime text-[18px]">air</span>
             <span class="text-on-surface">
               {{ w.windSpeedKmh != null ? ((w.windSpeedKmh | number: '1.0-0') + ' km/h') : '—' }}
             </span>
@@ -217,10 +227,13 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
         </section>
 
         @if (recording()) {
-          <div class="px-5 pb-2 text-center font-grotesk text-mono-data tabular-nums uppercase">
+          <div class="px-5 pb-2 text-center font-grotesk text-mono-data tabular-nums uppercase flex items-center justify-center gap-2">
             @if (paused()) {
-              <span class="text-velo-lime font-semibold">⏸ PAUSED</span>
-              <span class="text-on-surface-variant mx-2">·</span>
+              <span class="text-velo-lime font-semibold flex items-center gap-1">
+                <span class="material-symbols-outlined filled text-[18px]">pause_circle</span>
+                PAUSED
+              </span>
+              <span class="text-on-surface-variant">·</span>
             }
             <span class="text-on-surface-variant">
               Total {{ durationText() }}
@@ -329,6 +342,9 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
             </div>
           }
         </div>
+      }
+      @if (!recording()) {
+        <mobile-bottom-nav />
       }
     </div>
   `,
