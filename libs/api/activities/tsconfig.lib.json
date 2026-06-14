@@ -22,6 +22,9 @@
     },
     {
       "path": "../db/tsconfig.lib.json"
+    },
+    {
+      "path": "../auth/tsconfig.lib.json"
     }
   ],
   "exclude": [

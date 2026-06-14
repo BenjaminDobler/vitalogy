@@ -27,6 +27,10 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Vitalogy uses Bluetooth to connect to heart rate and cadence sensors during
   rides.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Vitalogy uses your location to record the GPS track of your ride.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Vitalogy uses your location to record the GPS track of your ride, including while the app is in the background.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>

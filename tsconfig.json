@@ -53,6 +53,15 @@
     },
     {
       "path": "./apps/mobile"
+    },
+    {
+      "path": "./libs/api/auth"
+    },
+    {
+      "path": "./libs/mobile/feature-settings"
+    },
+    {
+      "path": "./libs/mobile/api-client"
     }
   ]
 }

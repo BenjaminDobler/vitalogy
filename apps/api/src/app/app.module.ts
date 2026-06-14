@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DbModule } from 'db';
+import { AuthModule, UserIdMiddleware } from 'auth';
 import { AiModule } from 'ai';
 import { StravaModule } from 'strava';
 import { ActivitiesModule } from 'activities';
@@ -14,6 +15,7 @@ import { AppService } from './app.service';
       envFilePath: ['.env.local', '.env'],
     }),
     DbModule,
+    AuthModule,
     AiModule,
     StravaModule,
     ActivitiesModule,
@@ -21,4 +23,11 @@ import { AppService } from './app.service';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    // Runs for every API request. Strava OAuth callback (which Strava calls
+    // directly with no client-side header) gets the default user — that's the
+    // current single-user behavior for the web's Strava connection.
+    consumer.apply(UserIdMiddleware).forRoutes('*');
+  }
+}

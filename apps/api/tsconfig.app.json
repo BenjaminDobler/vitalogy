@@ -22,6 +22,9 @@
       "path": "../../libs/api/ai/tsconfig.lib.json"
     },
     {
+      "path": "../../libs/api/auth/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/api/db/tsconfig.lib.json"
     }
   ]

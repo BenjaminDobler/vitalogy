@@ -1,12 +1,13 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import {
   BleManager,
   DiscoveredSensor,
   KnownSensor,
   KnownSensorStore,
 } from 'ble';
-import { RecordingService } from 'recording';
+import { GpsTracker, RecordingService, UploadQueue } from 'recording';
 
 /**
  * Single-screen MVP: scan → connect → live readings → record / stop.
@@ -16,24 +17,48 @@ import { RecordingService } from 'recording';
  */
 @Component({
   selector: 'lib-feature-record',
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, RouterLink],
   template: `
     <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      <header class="px-5 pt-6 pb-4 flex items-baseline justify-between">
+      <header class="px-5 pt-6 pb-4 flex items-center justify-between">
         <h1 class="text-xl font-semibold">Record</h1>
-        @if (!recording()) {
-          <button
-            (click)="scan()"
-            [disabled]="scanning()"
-            class="text-sm px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
-          >
-            {{ scanning() ? 'Scanning…' : 'Scan' }}
-          </button>
-        }
+        <div class="flex gap-2">
+          @if (!recording()) {
+            <button
+              (click)="scan()"
+              [disabled]="scanning()"
+              class="text-sm px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
+            >
+              {{ scanning() ? 'Scanning…' : 'Scan' }}
+            </button>
+            <a
+              routerLink="/settings"
+              class="text-sm w-9 h-9 rounded-md bg-slate-800 hover:bg-slate-700 flex items-center justify-center"
+              aria-label="Settings"
+            >⚙</a>
+          }
+        </div>
       </header>
 
       @if (errorMsg(); as msg) {
         <p class="mx-5 mb-3 text-sm text-rose-400">{{ msg }}</p>
+      }
+
+      @if (pendingUploads().length > 0) {
+        <button
+          (click)="retryUploads()"
+          [disabled]="uploading()"
+          class="mx-5 mb-3 px-3 py-2 rounded-lg bg-amber-900/40 border border-amber-700/50 text-left disabled:opacity-50"
+        >
+          <div class="text-xs text-amber-300">
+            {{ uploading()
+              ? 'Uploading…'
+              : pendingUploads().length + ' ride' + (pendingUploads().length === 1 ? '' : 's') + ' pending upload' }}
+          </div>
+          @if (uploadError(); as e) {
+            <div class="text-xs text-amber-200/80 mt-1">{{ e }} — tap to retry</div>
+          }
+        </button>
       }
 
       @if (!recording()) {
@@ -215,10 +240,17 @@ export class FeatureRecord {
   private readonly ble = inject(BleManager);
   private readonly recordingService = inject(RecordingService);
   private readonly knownStore = inject(KnownSensorStore);
+  private readonly uploadQueue = inject(UploadQueue);
+  private readonly gps = inject(GpsTracker);
+
+  protected readonly gpsActive = this.gps.active;
 
   protected readonly connected = this.ble.connected;
   protected readonly scanning = this.ble.scanning;
   protected readonly known = this.knownStore.known;
+  protected readonly pendingUploads = this.uploadQueue.pending;
+  protected readonly uploading = this.uploadQueue.uploading;
+  protected readonly uploadError = this.uploadQueue.lastError;
 
   protected readonly discovered = signal<DiscoveredSensor[]>([]);
   protected readonly connecting = signal<string | null>(null);
@@ -337,21 +369,29 @@ export class FeatureRecord {
     }
   }
 
-  startRecording(): void {
+  async startRecording(): Promise<void> {
     this.errorMsg.set(null);
     try {
       this.recordingService.start();
+      // Kick off GPS in parallel — non-blocking, recording proceeds even if
+      // location permission is denied (indoor / trainer rides).
+      void this.gps.start();
     } catch (err) {
       this.errorMsg.set(toMessage(err));
     }
   }
 
-  stopRecording(): void {
+  async stopRecording(): Promise<void> {
+    await this.gps.stop();
     const session = this.recordingService.stop();
     if (session) {
-      console.log('[record] session ended', session);
-      // TODO: persist locally and upload to /api/activities when online.
+      void this.uploadQueue.enqueue(session);
     }
+  }
+
+  /** Manual retry from the pending-uploads banner. */
+  retryUploads(): void {
+    void this.uploadQueue.flush();
   }
 }
 

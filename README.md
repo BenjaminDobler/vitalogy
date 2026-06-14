@@ -107,9 +107,40 @@ npm run cap:sync
 npm run cap:open:ios
 ```
 
-In Xcode, add the following to `Info.plist`:
-- `NSBluetoothAlwaysUsageDescription` — *"Used to connect to heart rate and cadence sensors during rides."*
-- For background recording, enable **Bluetooth** under *Signing & Capabilities → Background Modes*.
+The committed `Info.plist` already includes the required permission strings
+(Bluetooth + Location) and `bluetooth-central` + `location` background modes.
+You only need to set the team + bundle identifier in Signing & Capabilities.
+
+### Mobile → API uploads
+
+Recordings auto-upload to the backend when you tap **Stop**. Two things you
+need to set up before the first upload works:
+
+1. **Backend reachable from the phone.** Find your Mac's LAN IP
+   (`ipconfig getifaddr en0`) and put it in the app's Settings screen as
+   <code>http://192.168.x.x:3000</code>. The API now listens on `0.0.0.0`,
+   not just loopback, so the LAN IP works out of the box. For testing
+   *away* from home WiFi, Tailscale is a great upgrade.
+
+2. **User ID (optional).** Defaults to `dev-user` — same namespace as the
+   web's Strava imports, so mobile rides show up at `/activities` alongside
+   them. Change this in Settings only if you want this phone's rides in a
+   separate namespace.
+
+If the phone is offline when you tap Stop, the session is queued in
+Capacitor Preferences and retried automatically next time the app opens (or
+manually via the yellow "N rides pending upload" banner).
+
+### Tier 1 user-id tenancy
+
+The API reads `X-User-Id` from every request and scopes all queries to that
+identity. The web app doesn't send the header → falls back to `dev-user`.
+The mobile app sends whatever Settings has → defaults to `dev-user`.
+
+This is **trust-the-client tenancy** — fine for a personal app on your home
+network. The single piece of code to change for proper auth (Tier 2 shared
+API key, Tier 3 Sign in with Apple) is
+<code>libs/api/auth/src/lib/user-id.middleware.ts</code>.
 
 ### Build for Android
 

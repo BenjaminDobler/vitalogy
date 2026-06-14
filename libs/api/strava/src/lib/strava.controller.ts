@@ -9,9 +9,8 @@ import {
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import type { Response } from 'express';
+import { DEFAULT_USER_ID, UserId } from 'auth';
 import { StravaService } from './strava.service.js';
-
-const DEV_USER_ID = 'dev-user';
 
 @Controller('auth/strava')
 export class StravaController {
@@ -23,11 +22,17 @@ export class StravaController {
   @Get('start')
   start(@Res() res: Response) {
     const state = randomBytes(16).toString('hex');
-    // TODO: persist `state` against the session to prevent CSRF.
+    // TODO: persist `state` against the session to prevent CSRF and to carry
+    // the userId through the redirect — Strava won't see our X-User-Id header.
     res.redirect(this.strava.authorizeUrl(state));
   }
 
-  /** Strava redirects here with ?code=... after the user approves. */
+  /**
+   * Strava redirects here with ?code=... after the user approves.
+   * Strava itself never sees our X-User-Id header, so this always binds the
+   * connection to the default user — which is what the web app expects.
+   * For multi-user later, the userId would round-trip via the `state` param.
+   */
   @Get('callback')
   async callback(
     @Query('code') code: string,
@@ -39,7 +44,7 @@ export class StravaController {
       return;
     }
     try {
-      await this.strava.handleCallback(DEV_USER_ID, code);
+      await this.strava.handleCallback(DEFAULT_USER_ID, code);
       res.redirect('/');
     } catch (err) {
       this.logger.error('Strava callback failed', err);
@@ -54,8 +59,8 @@ export class StravaImportController {
   constructor(private readonly strava: StravaService) {}
 
   @Post('import-recent')
-  async importRecent() {
-    const count = await this.strava.importRecent(DEV_USER_ID);
+  async importRecent(@UserId() userId: string) {
+    const count = await this.strava.importRecent(userId);
     return { imported: count };
   }
 
@@ -65,10 +70,11 @@ export class StravaImportController {
    */
   @Post('import/:activityId')
   async importDetail(
+    @UserId() userId: string,
     @Param('activityId') activityId: string,
     @Query('force') force?: string,
   ) {
-    return this.strava.importDetail(DEV_USER_ID, activityId, {
+    return this.strava.importDetail(userId, activityId, {
       force: force === 'true' || force === '1',
     });
   }
@@ -80,8 +86,11 @@ export class StravaImportController {
    * Strava rate limit.
    */
   @Post('import-missing-details')
-  async importMissingDetails(@Query('max') max?: string) {
-    return this.strava.importMissingDetails(DEV_USER_ID, {
+  async importMissingDetails(
+    @UserId() userId: string,
+    @Query('max') max?: string,
+  ) {
+    return this.strava.importMissingDetails(userId, {
       max: max ? Number(max) : undefined,
     });
   }

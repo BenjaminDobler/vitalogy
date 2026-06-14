@@ -1,0 +1,13 @@
+{
+  "name": "feature-settings",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/mobile/feature-settings/src",
+  "prefix": "lib",
+  "projectType": "library",
+  "tags": ["scope:mobile", "type:feature"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

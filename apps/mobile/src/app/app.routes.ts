@@ -11,4 +11,9 @@ export const appRoutes: Route[] = [
     loadChildren: () =>
       import('feature-record').then((m) => m.featureRecordRoutes),
   },
+  {
+    path: 'settings',
+    loadChildren: () =>
+      import('feature-settings').then((m) => m.featureSettingsRoutes),
+  },
 ];

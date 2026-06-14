@@ -19,12 +19,6 @@
   "references": [
     {
       "path": "../db/tsconfig.lib.json"
-    },
-    {
-      "path": "../../shared/data-models/tsconfig.lib.json"
-    },
-    {
-      "path": "../auth/tsconfig.lib.json"
     }
   ],
   "exclude": [
