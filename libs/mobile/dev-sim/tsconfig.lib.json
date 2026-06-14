@@ -1,0 +1,30 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../../dist/out-tsc/libs/mobile/dev-sim",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "inlineSources": true,
+    "types": []
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"],
+  "references": [
+    {
+      "path": "../weather/tsconfig.lib.json"
+    },
+    {
+      "path": "../recording/tsconfig.lib.json"
+    },
+    {
+      "path": "../../shared/data-models/tsconfig.lib.json"
+    },
+    {
+      "path": "../api-client/tsconfig.lib.json"
+    },
+    {
+      "path": "../ble/tsconfig.lib.json"
+    }
+  ]
+}

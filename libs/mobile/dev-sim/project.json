@@ -1,0 +1,13 @@
+{
+  "name": "dev-sim",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/mobile/dev-sim/src",
+  "prefix": "lib",
+  "projectType": "library",
+  "tags": ["scope:mobile", "type:data-access"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

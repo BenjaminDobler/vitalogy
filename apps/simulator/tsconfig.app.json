@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/out-tsc",
+    "types": []
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"],
+  "references": [
+    {
+      "path": "../../libs/mobile/api-client/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/mobile/dev-sim/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/mobile/feature-record/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/mobile/recording/tsconfig.lib.json"
+    }
+  ]
+}

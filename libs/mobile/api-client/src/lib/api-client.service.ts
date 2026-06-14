@@ -5,17 +5,20 @@ import { ConfigService } from './config.service';
 
 /**
  * Thin wrapper over Angular HttpClient that:
- *  - prepends the configured API base URL
+ *  - prepends the configured API base URL when set, otherwise sends to the
+ *    same origin (useful with a dev-server proxy, as the simulator uses)
  *  - sends the configured X-User-Id header so the backend middleware
  *    can scope queries to this install
- *  - throws a clear error if no base URL is set (caller should queue
- *    the request locally and retry later)
  */
 @Injectable({ providedIn: 'root' })
 export class ApiClient {
   private readonly http = inject(HttpClient);
   private readonly config = inject(ConfigService);
 
+  /**
+   * True only when an explicit base URL is set. Mobile uses this to decide
+   * whether to queue uploads locally instead of attempting them.
+   */
   isConfigured(): boolean {
     return this.config.apiBaseUrl().length > 0;
   }
@@ -32,12 +35,9 @@ export class ApiClient {
 
   private url(path: string): string {
     const base = this.config.apiBaseUrl();
-    if (!base) {
-      throw new Error(
-        'No API base URL configured. Open Settings and set one (e.g. http://192.168.1.42:3000).',
-      );
-    }
-    return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+    const prefixed = path.startsWith('/') ? path : `/${path}`;
+    // Empty base → relative URL (uses dev-server proxy or same-origin in prod).
+    return base ? `${base}${prefixed}` : prefixed;
   }
 
   private headers(): Record<string, string> {

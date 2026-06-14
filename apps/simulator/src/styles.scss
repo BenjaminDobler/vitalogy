@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import 'leaflet/dist/leaflet.css';
+
+/* Match the mobile app's safe-area utilities so the embedded record screen
+   doesn't look broken (the desktop has no safe area, max() falls back to
+   the static minimum). */
+.pt-safe-6 { padding-top: max(env(safe-area-inset-top), 1.5rem); }
+.pb-safe-8 { padding-bottom: max(env(safe-area-inset-bottom), 2rem); }

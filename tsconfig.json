@@ -65,6 +65,12 @@
     },
     {
       "path": "./libs/mobile/weather"
+    },
+    {
+      "path": "./libs/mobile/dev-sim"
+    },
+    {
+      "path": "./apps/simulator"
     }
   ]
 }

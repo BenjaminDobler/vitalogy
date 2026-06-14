@@ -11,6 +11,7 @@
     "serve:web": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx serve web",
     "serve:api": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx serve api",
     "serve:mobile": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx serve mobile",
+    "serve:simulator": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx serve simulator",
     "serve:all": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx run-many -t serve -p web,api",
     "build:mobile": "NX_IGNORE_UNSUPPORTED_TS_SETUP=true nx build mobile",
     "cap:sync": "cd apps/mobile && npx cap sync",
