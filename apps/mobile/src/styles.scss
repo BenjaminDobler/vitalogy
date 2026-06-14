@@ -7,3 +7,10 @@ html, body {
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Safe-area-aware padding utilities for iOS Dynamic Island + home indicator.
+   `max()` keeps a sensible minimum on devices without insets (older iPads,
+   the browser preview). Use these instead of plain pt-6 / pb-8 on screen
+   containers so the nav controls don't get hidden under the system UI. */
+.pt-safe-6 { padding-top: max(env(safe-area-inset-top), 1.5rem); }
+.pb-safe-8 { padding-bottom: max(env(safe-area-inset-bottom), 2rem); }

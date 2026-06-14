@@ -8,7 +8,7 @@ import { ConfigService, DEFAULT_USER_ID } from 'api-client';
   imports: [FormsModule, RouterLink],
   template: `
     <div class="min-h-screen bg-slate-950 text-slate-100">
-      <header class="px-5 pt-6 pb-4 flex items-center justify-between">
+      <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between">
         <a routerLink="/record" class="text-sm text-slate-400 hover:underline">
           ← Back
         </a>

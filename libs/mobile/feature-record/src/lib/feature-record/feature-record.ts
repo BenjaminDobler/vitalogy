@@ -20,7 +20,7 @@ import { GpsTracker, RecordingService, UploadQueue } from 'recording';
   imports: [DecimalPipe, RouterLink],
   template: `
     <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      <header class="px-5 pt-6 pb-4 flex items-center justify-between">
+      <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between">
         <h1 class="text-xl font-semibold">Record</h1>
         <div class="flex gap-2">
           @if (!recording()) {
@@ -293,7 +293,7 @@ import { GpsTracker, RecordingService, UploadQueue } from 'recording';
           }
         }
 
-        <div class="px-5 pb-8 sticky bottom-0 bg-gradient-to-t from-slate-950 to-transparent pt-6">
+        <div class="px-5 pb-safe-8 sticky bottom-0 bg-gradient-to-t from-slate-950 to-transparent pt-6">
           @if (!recording()) {
             <button
               (click)="startRecording()"
