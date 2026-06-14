@@ -277,9 +277,21 @@ export class ActivityDetailComponent {
     const streams = this.activity()?.streams ?? [];
     const latlng = streams.find((s) => s.type === 'latlng');
     if (!latlng) return null;
-    const data = latlng.data as [number, number][];
-    if (!Array.isArray(data) || data.length === 0) return null;
-    return data;
+    // The latlng stream is time-aligned with the rest, so entries from
+    // before GPS got a fix are stored as `null`. Filter them out — Leaflet
+    // chokes on null/NaN coordinates and silently fails to draw the line.
+    const raw = latlng.data as Array<[number, number] | null>;
+    if (!Array.isArray(raw)) return null;
+    const filtered = raw.filter(
+      (p): p is [number, number] =>
+        Array.isArray(p) &&
+        p.length === 2 &&
+        typeof p[0] === 'number' &&
+        typeof p[1] === 'number' &&
+        Number.isFinite(p[0]) &&
+        Number.isFinite(p[1]),
+    );
+    return filtered.length > 0 ? filtered : null;
   });
 
   protected readonly sampleCount = computed(() => {
