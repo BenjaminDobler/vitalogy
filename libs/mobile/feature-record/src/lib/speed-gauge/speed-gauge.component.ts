@@ -22,20 +22,20 @@ import { DecimalPipe } from '@angular/common';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DecimalPipe],
   template: `
-    <div class="rounded-xl bg-slate-900 p-3 flex flex-col items-center">
-      <svg viewBox="0 0 200 200" class="w-full max-w-[280px]">
+    <div class="rounded-xl velo-glass p-4 flex flex-col items-center">
+      <svg viewBox="0 0 200 200" class="w-full max-w-[280px] velo-glow-lime">
         <!-- Background arc (full sweep). -->
         <path
           [attr.d]="bgArcPath()"
-          stroke="rgb(30 41 59)"
+          stroke="rgba(255, 255, 255, 0.1)"
           stroke-width="12"
           fill="none"
           stroke-linecap="round"
         />
-        <!-- Foreground arc fills from start to current speed. -->
+        <!-- Foreground arc fills from start to current speed — electric lime. -->
         <path
           [attr.d]="fgArcPath()"
-          stroke="rgb(56 189 248)"
+          stroke="#c3f400"
           stroke-width="12"
           fill="none"
           stroke-linecap="round"
@@ -76,24 +76,27 @@ import { DecimalPipe } from '@angular/common';
         />
         <circle cx="100" cy="100" r="6" fill="rgb(15 23 42)" stroke="white" stroke-width="2" />
 
-        <!-- Big numeric value. -->
+        <!-- Big numeric value — Sora display weight. -->
         <text
           x="100"
           y="148"
-          fill="white"
-          font-size="34"
-          font-weight="700"
+          fill="#c3f400"
+          font-size="38"
+          font-weight="800"
           text-anchor="middle"
-          font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-family="Sora, ui-sans-serif, system-ui"
+          letter-spacing="-0.04em"
         >{{ speedKmh() | number: '1.0-0' }}</text>
         <text
           x="100"
           y="170"
-          fill="rgb(100 116 139)"
-          font-size="11"
+          fill="rgb(196 201 172)"
+          font-size="10"
           text-anchor="middle"
-          letter-spacing="0.05em"
-        >km/h</text>
+          letter-spacing="0.1em"
+          font-family="Space Grotesk, ui-monospace, monospace"
+          font-weight="600"
+        >KM/H</text>
       </svg>
     </div>
   `,

@@ -38,69 +38,76 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
   selector: 'lib-feature-record',
   imports: [DecimalPipe, RouterLink, SpeedGaugeComponent],
   template: `
-    <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between">
-        <h1 class="text-xl font-semibold">Record</h1>
+    <div class="min-h-screen velo-carbon text-on-surface flex flex-col font-inter">
+      <!-- VITALOGY brand bar — glass header with menu / italic logo / cog -->
+      <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between border-b border-white/5">
+        <span class="w-10"></span>
+        <h1 class="font-sora italic uppercase tracking-tighter text-2xl text-velo-lime">VITALOGY</h1>
         @if (!recording()) {
           <a
             routerLink="/settings"
-            class="text-sm w-9 h-9 rounded-md bg-slate-800 hover:bg-slate-700 flex items-center justify-center"
+            class="w-10 h-10 rounded-full velo-glass flex items-center justify-center hover:bg-white/10"
             aria-label="Settings"
-          >⚙</a>
+          >
+            <span class="material-symbols-outlined text-on-surface text-[20px]">settings</span>
+          </a>
+        } @else {
+          <span class="w-10"></span>
         }
       </header>
 
       @if (errorMsg(); as msg) {
-        <p class="mx-5 mb-3 text-sm text-rose-400">{{ msg }}</p>
+        <p class="mx-5 mt-3 text-sm text-rose-300 font-grotesk">{{ msg }}</p>
       }
 
       @if (pendingUploads().length > 0) {
         <button
           (click)="retryUploads()"
           [disabled]="uploading()"
-          class="mx-5 mb-3 px-3 py-2 rounded-lg bg-amber-900/40 border border-amber-700/50 text-left disabled:opacity-50"
+          class="mx-5 mt-3 px-4 py-3 rounded-xl velo-glass text-left disabled:opacity-50"
         >
-          <div class="text-xs text-amber-300">
+          <div class="font-grotesk text-label-caps text-velo-lime uppercase">
             {{ uploading()
               ? 'Uploading…'
               : pendingUploads().length + ' ride' + (pendingUploads().length === 1 ? '' : 's') + ' pending upload' }}
           </div>
           @if (uploadError(); as e) {
-            <div class="text-xs text-amber-200/80 mt-1">{{ e }} — tap to retry</div>
+            <div class="text-xs text-on-surface-variant mt-1">{{ e }} — tap to retry</div>
           }
         </button>
       }
 
       @if (!recording() && connected().length === 0) {
-        <div class="mx-5 mb-3 rounded-lg border border-dashed border-slate-700 px-4 py-6 text-center">
-          <p class="text-sm text-slate-400 mb-3">
-            No sensors connected.
+        <div class="mx-5 mt-6 rounded-xl velo-glass px-6 py-10 text-center">
+          <span class="material-symbols-outlined text-on-surface-variant text-[36px]">bluetooth_searching</span>
+          <p class="mt-3 font-grotesk text-label-caps text-on-surface-variant uppercase">
+            No sensors connected
           </p>
           <a
             routerLink="/settings"
             fragment="sensors"
-            class="inline-block px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 text-sm"
-          >Manage sensors →</a>
+            class="inline-block mt-4 px-6 py-2.5 rounded-full bg-velo-lime text-velo-on-lime font-grotesk text-label-caps uppercase velo-shadow-lime hover:brightness-110"
+          >Manage sensors</a>
         </div>
       }
 
       @if (recording() && weatherLatest(); as w) {
-        <div class="mx-5 mb-3 px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-800 flex items-center justify-between tabular-nums">
-          <div class="flex items-center gap-2 text-sm">
+        <div class="mx-5 mt-3 px-3 py-2 rounded-xl velo-glass flex items-center justify-between font-grotesk text-mono-data tabular-nums">
+          <div class="flex items-center gap-2">
             <span class="text-lg">{{ weatherEmoji(w.weatherCode) }}</span>
-            <span class="font-medium">
+            <span class="text-on-surface">
               {{ w.tempC != null ? ((w.tempC | number: '1.0-0') + '°C') : '—' }}
             </span>
-            <span class="text-xs text-slate-500">{{ weatherLabel(w.weatherCode) }}</span>
+            <span class="text-on-surface-variant text-xs uppercase">{{ weatherLabel(w.weatherCode) }}</span>
           </div>
-          <div class="flex items-center gap-1 text-sm">
+          <div class="flex items-center gap-1">
             <span class="text-lg">💨</span>
-            <span class="font-medium">
+            <span class="text-on-surface">
               {{ w.windSpeedKmh != null ? ((w.windSpeedKmh | number: '1.0-0') + ' km/h') : '—' }}
             </span>
-            <span class="text-xs text-slate-500">{{ windCardinal(w.windDirectionDeg) }}</span>
+            <span class="text-on-surface-variant text-xs uppercase">{{ windCardinal(w.windDirectionDeg) }}</span>
             @if (w.windGustKmh != null && w.windSpeedKmh != null && w.windGustKmh > w.windSpeedKmh) {
-              <span class="text-xs text-slate-500">· gust {{ w.windGustKmh | number: '1.0-0' }}</span>
+              <span class="text-xs text-on-surface-variant">· gust {{ w.windGustKmh | number: '1.0-0' }}</span>
             }
           </div>
         </div>
@@ -108,7 +115,7 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
 
       @if (connected().length > 0) {
         <section
-          class="px-5 pb-6 grid gap-3 mt-auto"
+          class="px-5 pt-5 pb-6 grid gap-4 mt-auto"
           [class.grid-cols-2]="layout() === 'two-col'"
           [class.grid-cols-1]="layout() === 'one-col'"
         >
@@ -116,40 +123,37 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
             @if (tile === 'speed-gauge') {
               <mobile-speed-gauge [speedKmh]="speedKmh() ?? 0" />
             } @else {
-            <div class="rounded-xl bg-slate-900 p-4">
-              <div
-                class="text-[10px] uppercase tracking-wider"
-                [class]="tileDef(tile).color"
-              >
-                {{ tileDef(tile).label }}
+              <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">
+                  {{ tileDef(tile).label }}
+                </div>
+                <div class="flex items-baseline gap-1.5">
+                  <span
+                    class="font-sora tabular-nums leading-none text-velo-lime"
+                    [class.text-metric-lg]="layout() === 'two-col'"
+                    [class.text-metric-xl]="layout() === 'one-col'"
+                  >{{ tileValue(tile) }}</span>
+                  @if (tileDef(tile).unit) {
+                    <span class="font-grotesk text-mono-data text-on-surface-variant uppercase">
+                      {{ tileDef(tile).unit }}
+                    </span>
+                  }
+                </div>
               </div>
-              <div
-                class="font-bold tabular-nums mt-1"
-                [class.text-4xl]="layout() === 'two-col'"
-                [class.text-6xl]="layout() === 'one-col'"
-              >
-                {{ tileValue(tile) }}
-                @if (tileDef(tile).unit) {
-                  <span class="text-sm text-slate-500 font-normal">
-                    {{ tileDef(tile).unit }}
-                  </span>
-                }
-              </div>
-            </div>
             }
           }
         </section>
 
         @if (recording()) {
-          <div class="px-5 pb-2 text-center text-sm tabular-nums">
+          <div class="px-5 pb-2 text-center font-grotesk text-mono-data tabular-nums uppercase">
             @if (paused()) {
-              <span class="text-amber-400 font-semibold">⏸ PAUSED</span>
-              <span class="text-slate-500 mx-2">·</span>
+              <span class="text-velo-lime font-semibold">⏸ PAUSED</span>
+              <span class="text-on-surface-variant mx-2">·</span>
             }
-            <span class="text-slate-400">
+            <span class="text-on-surface-variant">
               Total {{ durationText() }}
               @if (stats(); as st) {
-                <span class="text-slate-600">
+                <span class="opacity-50">
                   · {{ formatDur(st.elapsedSec) }} elapsed
                 </span>
               }
@@ -158,28 +162,24 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
 
           @if (lapToast(); as toast) {
             <div
-              class="mx-5 mb-3 px-3 py-2 rounded-lg text-center tabular-nums"
-              [class.bg-emerald-900\/40]="toast.isNewBest"
-              [class.border-emerald-600\/50]="toast.isNewBest"
-              [class.bg-slate-900\/60]="!toast.isNewBest"
-              [class.border-slate-700\/50]="!toast.isNewBest"
-              class="border"
+              class="mx-5 mb-3 px-3 py-2 rounded-xl velo-glass text-center tabular-nums"
+              [class.velo-shadow-lime]="toast.isNewBest"
             >
               @if (toast.isNewBest) {
-                <div class="text-sm font-semibold text-emerald-300">
+                <div class="font-grotesk text-label-caps text-velo-lime uppercase">
                   🏆 New best lap!
                 </div>
               }
-              <div class="text-xs"
-                [class.text-emerald-200]="toast.isNewBest"
-                [class.text-slate-300]="!toast.isNewBest"
+              <div class="font-grotesk text-mono-data uppercase mt-0.5"
+                [class.text-velo-lime]="toast.isNewBest"
+                [class.text-on-surface]="!toast.isNewBest"
               >
                 Lap {{ toast.index }}: {{ formatDur(toast.durationSec) }}
                 @if (toast.deltaSec != null) {
                   ·
                   <span
-                    [class.text-emerald-400]="toast.deltaSec < 0"
-                    [class.text-rose-400]="toast.deltaSec > 0"
+                    [class.text-velo-lime]="toast.deltaSec < 0"
+                    [class.text-rose-300]="toast.deltaSec > 0"
                   >
                     {{ toast.deltaSec > 0 ? '+' : '' }}{{ toast.deltaSec }}s vs best
                   </span>
@@ -189,46 +189,38 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
           }
 
           @if (currentLapStats(); as ls) {
-            <div
-              class="mx-5 mb-3 px-3 py-2 rounded-lg bg-slate-900/60 border border-amber-700/40 grid grid-cols-4 gap-2 text-center tabular-nums"
-            >
+            <div class="mx-5 mb-3 px-4 py-3 rounded-xl velo-glass grid grid-cols-4 gap-2 text-center tabular-nums">
               <div>
-                <div class="text-[10px] uppercase tracking-wider text-amber-400">
+                <div class="font-grotesk text-label-caps text-velo-lime uppercase">
                   Lap {{ currentLap() }}
                 </div>
-                <div class="text-sm font-semibold">{{ lapDurationText() }}</div>
+                <div class="font-sora text-sm font-semibold mt-1">{{ lapDurationText() }}</div>
                 @if (lapDelta(); as d) {
                   <div
-                    class="text-[10px] font-medium tabular-nums"
-                    [class.text-emerald-400]="d.meters >= 0"
-                    [class.text-rose-400]="d.meters < 0"
+                    class="font-grotesk text-[10px] tabular-nums uppercase"
+                    [class.text-velo-lime]="d.meters >= 0"
+                    [class.text-rose-300]="d.meters < 0"
                   >
                     {{ d.meters > 0 ? '+' : '' }}{{ d.meters }} m vs L{{ d.referenceLap }}
                   </div>
                 }
               </div>
               <div>
-                <div class="text-[10px] uppercase tracking-wider text-slate-500">
-                  Dist
-                </div>
-                <div class="text-sm font-semibold">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase">Dist</div>
+                <div class="font-sora text-sm font-semibold mt-1">
                   {{ ls.distanceM / 1000 | number: '1.2-2' }}
-                  <span class="text-xs font-normal text-slate-500">km</span>
+                  <span class="text-xs font-normal text-on-surface-variant">km</span>
                 </div>
               </div>
               <div>
-                <div class="text-[10px] uppercase tracking-wider text-slate-500">
-                  Avg HR
-                </div>
-                <div class="text-sm font-semibold">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase">Avg HR</div>
+                <div class="font-sora text-sm font-semibold mt-1">
                   {{ ls.avgHr != null ? (ls.avgHr | number: '1.0-0') : '—' }}
                 </div>
               </div>
               <div>
-                <div class="text-[10px] uppercase tracking-wider text-slate-500">
-                  Avg cad
-                </div>
-                <div class="text-sm font-semibold">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase">Avg cad</div>
+                <div class="font-sora text-sm font-semibold mt-1">
                   {{ ls.avgCadenceRpm != null ? (ls.avgCadenceRpm | number: '1.0-0') : '—' }}
                 </div>
               </div>
@@ -236,27 +228,30 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
           }
         }
 
-        <div class="px-5 pb-safe-8 sticky bottom-0 bg-gradient-to-t from-slate-950 to-transparent pt-6">
+        <div class="px-5 pb-safe-8 sticky bottom-0 bg-gradient-to-t from-surface-dim via-surface-dim/80 to-transparent pt-6">
           @if (!recording()) {
             <button
               (click)="startRecording()"
               [disabled]="connected().length === 0"
-              class="w-full py-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-lg font-semibold disabled:opacity-50"
+              class="w-full py-5 rounded-full bg-velo-lime text-velo-on-lime font-sora italic uppercase tracking-tighter text-2xl velo-shadow-lime flex items-center justify-center gap-3 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
             >
-              Start recording
+              <span class="material-symbols-outlined filled text-[28px]">play_arrow</span>
+              Start Ride
             </button>
           } @else {
-            <div class="flex gap-2">
+            <div class="flex gap-3">
               <button
                 (click)="markLap()"
-                class="flex-1 py-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-lg font-semibold"
+                class="flex-1 py-4 rounded-full velo-glass text-on-surface font-grotesk text-label-caps uppercase flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98] transition-all"
               >
+                <span class="material-symbols-outlined text-[20px]">flag</span>
                 Lap
               </button>
               <button
                 (click)="stopRecording()"
-                class="flex-1 py-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-lg font-semibold"
+                class="flex-1 py-4 rounded-full bg-velo-lime text-velo-on-lime font-grotesk text-label-caps uppercase velo-shadow-lime flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.98] transition-all"
               >
+                <span class="material-symbols-outlined filled text-[20px]">stop_circle</span>
                 Stop
               </button>
             </div>

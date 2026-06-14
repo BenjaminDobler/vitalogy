@@ -19,49 +19,53 @@ import {
   selector: 'lib-feature-settings',
   imports: [FormsModule, RouterLink],
   template: `
-    <div class="min-h-screen bg-slate-950 text-slate-100">
-      <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between">
-        <a routerLink="/record" class="text-sm text-slate-400 hover:underline">
-          ← Back
+    <div class="min-h-screen velo-carbon text-on-surface font-inter">
+      <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between border-b border-white/5">
+        <a
+          routerLink="/record"
+          class="w-10 h-10 rounded-full velo-glass flex items-center justify-center"
+          aria-label="Back"
+        >
+          <span class="material-symbols-outlined text-on-surface text-[20px]">arrow_back</span>
         </a>
-        <h1 class="text-xl font-semibold">Settings</h1>
-        <span class="w-12"></span>
+        <h1 class="font-sora italic uppercase tracking-tighter text-xl text-velo-lime">SETTINGS</h1>
+        <span class="w-10"></span>
       </header>
 
       <section class="px-5 pb-6 space-y-8 max-w-xl">
         <!-- Sensors -->
         <fieldset id="sensors" class="space-y-3">
-          <legend class="text-xs uppercase tracking-wider text-slate-500 mb-1">
+          <legend class="font-grotesk text-label-caps text-velo-lime uppercase mb-1">
             Sensors
           </legend>
 
           @if (sensorError(); as msg) {
-            <p class="text-sm text-rose-400">{{ msg }}</p>
+            <p class="text-sm text-rose-300">{{ msg }}</p>
           }
 
           <button
             (click)="scanForSensors()"
             [disabled]="scanning()"
-            class="px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 text-sm disabled:opacity-50"
+            class="px-4 py-2 rounded-full velo-glass text-on-surface font-grotesk text-label-caps uppercase hover:bg-white/10 disabled:opacity-50"
           >
             {{ scanning() ? 'Scanning…' : 'Scan' }}
           </button>
 
           @if (connected().length > 0) {
             <div>
-              <h3 class="text-xs text-slate-500 mt-3 mb-2">Connected</h3>
+              <h3 class="text-xs text-on-surface-variant mt-3 mb-2">Connected</h3>
               <ul class="space-y-1.5">
                 @for (c of connected(); track c.deviceId) {
-                  <li class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2">
+                  <li class="flex items-center justify-between rounded-lg bg-surface-container-low px-3 py-2">
                     <div>
                       <div class="text-sm font-medium">{{ c.name ?? c.deviceId }}</div>
-                      <div class="text-xs text-slate-500">
+                      <div class="text-xs text-on-surface-variant">
                         {{ c.subscribed.join(' · ') || 'connected, not subscribed' }}
                       </div>
                     </div>
                     <button
                       (click)="disconnectSensor(c.deviceId)"
-                      class="text-xs px-2 py-1 rounded-md text-rose-400 hover:bg-slate-800"
+                      class="text-xs px-2 py-1 rounded-md text-rose-300 hover:bg-white/10"
                     >Disconnect</button>
                   </li>
                 }
@@ -71,25 +75,25 @@ import {
 
           @if (availableKnown().length > 0) {
             <div>
-              <h3 class="text-xs text-slate-500 mt-3 mb-2">Recent</h3>
+              <h3 class="text-xs text-on-surface-variant mt-3 mb-2">Recent</h3>
               <ul class="space-y-1.5">
                 @for (k of availableKnown(); track k.deviceId) {
-                  <li class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2">
+                  <li class="flex items-center justify-between rounded-lg bg-surface-container-low px-3 py-2">
                     <div>
                       <div class="text-sm font-medium">{{ k.name ?? '(unnamed)' }}</div>
-                      <div class="text-xs text-slate-500">{{ k.kinds.join(', ') }}</div>
+                      <div class="text-xs text-on-surface-variant">{{ k.kinds.join(', ') }}</div>
                     </div>
                     <div class="flex gap-1">
                       <button
                         (click)="reconnectSensor(k)"
                         [disabled]="connecting() === k.deviceId"
-                        class="text-xs px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 disabled:opacity-50"
+                        class="text-xs px-3 py-1.5 rounded-md bg-velo-lime text-velo-on-lime velo-shadow-lime hover:brightness-110 disabled:opacity-50"
                       >
                         {{ connecting() === k.deviceId ? '…' : 'Reconnect' }}
                       </button>
                       <button
                         (click)="forgetSensor(k.deviceId)"
-                        class="text-xs px-2 py-1.5 rounded-md text-slate-500 hover:bg-slate-800"
+                        class="text-xs px-2 py-1.5 rounded-md text-on-surface-variant hover:bg-white/10"
                       >Forget</button>
                     </div>
                   </li>
@@ -100,13 +104,13 @@ import {
 
           @if (newlyDiscovered().length > 0) {
             <div>
-              <h3 class="text-xs text-slate-500 mt-3 mb-2">Discovered</h3>
+              <h3 class="text-xs text-on-surface-variant mt-3 mb-2">Discovered</h3>
               <ul class="space-y-1.5">
                 @for (d of newlyDiscovered(); track d.deviceId) {
-                  <li class="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2">
+                  <li class="flex items-center justify-between rounded-lg bg-surface-container-low px-3 py-2">
                     <div>
                       <div class="text-sm font-medium">{{ d.name ?? '(unnamed)' }}</div>
-                      <div class="text-xs text-slate-500">
+                      <div class="text-xs text-on-surface-variant">
                         {{ d.kinds.join(', ') }}
                         @if (d.rssi != null) { · {{ d.rssi }} dBm }
                       </div>
@@ -114,7 +118,7 @@ import {
                     <button
                       (click)="connectSensor(d)"
                       [disabled]="connecting() === d.deviceId"
-                      class="text-xs px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+                      class="text-xs px-3 py-1.5 rounded-md bg-velo-lime text-velo-on-lime velo-shadow-lime hover:brightness-110 disabled:opacity-50"
                     >{{ connecting() === d.deviceId ? '…' : 'Connect' }}</button>
                   </li>
                 }
@@ -123,20 +127,20 @@ import {
           }
 
           @if (connected().length === 0 && availableKnown().length === 0 && newlyDiscovered().length === 0) {
-            <p class="text-xs text-slate-500">
+            <p class="text-xs text-on-surface-variant">
               No sensors yet. Wake your TICKR + Blue SC and tap Scan.
             </p>
           }
         </fieldset>
 
         <!-- Backend -->
-        <fieldset class="space-y-4 border-t border-slate-800 pt-6">
-          <legend class="text-xs uppercase tracking-wider text-slate-500">
+        <fieldset class="space-y-4 border-t border-white/10 pt-6">
+          <legend class="text-xs uppercase tracking-wider text-on-surface-variant">
             Backend
           </legend>
 
           <div>
-            <label class="block text-xs uppercase tracking-wider text-slate-500 mb-2">
+            <label class="block text-xs uppercase tracking-wider text-on-surface-variant mb-2">
               API base URL
             </label>
             <input
@@ -145,12 +149,12 @@ import {
               placeholder="http://192.168.1.42:3000"
               autocapitalize="none"
               autocorrect="off"
-              class="w-full rounded-lg bg-slate-900 border border-slate-800 px-3 py-3 text-sm font-mono text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-sky-500"
+              class="w-full rounded-lg bg-surface-container-low border border-white/10 px-3 py-3 text-sm font-mono text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-velo-lime"
             />
           </div>
 
           <div>
-            <label class="block text-xs uppercase tracking-wider text-slate-500 mb-2">
+            <label class="block text-xs uppercase tracking-wider text-on-surface-variant mb-2">
               User ID
             </label>
             <input
@@ -159,7 +163,7 @@ import {
               [placeholder]="defaultUserId"
               autocapitalize="none"
               autocorrect="off"
-              class="w-full rounded-lg bg-slate-900 border border-slate-800 px-3 py-3 text-sm font-mono text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-sky-500"
+              class="w-full rounded-lg bg-surface-container-low border border-white/10 px-3 py-3 text-sm font-mono text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-velo-lime"
             />
           </div>
 
@@ -167,14 +171,14 @@ import {
             <button
               (click)="save()"
               [disabled]="saving()"
-              class="px-5 py-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-medium disabled:opacity-50"
+              class="px-5 py-3 rounded-lg bg-velo-lime text-velo-on-lime velo-shadow-lime hover:brightness-110 font-medium disabled:opacity-50"
             >
               {{ saving() ? 'Saving…' : 'Save' }}
             </button>
             <button
               (click)="testConnection()"
               [disabled]="testing() || !baseUrl"
-              class="px-5 py-3 rounded-lg border border-slate-700 hover:bg-slate-800 disabled:opacity-50"
+              class="px-5 py-3 rounded-lg border border-white/10 hover:bg-white/10 disabled:opacity-50"
             >
               {{ testing() ? 'Testing…' : 'Test connection' }}
             </button>
@@ -183,8 +187,8 @@ import {
           @if (status(); as msg) {
             <p
               class="text-sm"
-              [class.text-emerald-400]="!isError()"
-              [class.text-rose-400]="isError()"
+              [class.text-velo-lime]="!isError()"
+              [class.text-rose-300]="isError()"
             >
               {{ msg }}
             </p>
@@ -192,8 +196,8 @@ import {
         </fieldset>
 
         <!-- Auto-pause -->
-        <fieldset class="space-y-3 border-t border-slate-800 pt-6">
-          <legend class="text-xs uppercase tracking-wider text-slate-500 mb-1">
+        <fieldset class="space-y-3 border-t border-white/10 pt-6">
+          <legend class="font-grotesk text-label-caps text-velo-lime uppercase mb-1">
             Auto-pause
           </legend>
 
@@ -205,13 +209,13 @@ import {
               type="checkbox"
               [checked]="autoPauseEnabled()"
               (change)="setAutoPauseEnabled(toBool($event))"
-              class="w-5 h-5 accent-sky-500"
+              class="w-5 h-5 accent-velo-lime"
             />
           </label>
 
           <div class="grid grid-cols-2 gap-3">
             <label class="block">
-              <span class="block text-xs text-slate-500 mb-1">Threshold (km/h)</span>
+              <span class="block text-xs text-on-surface-variant mb-1">Threshold (km/h)</span>
               <input
                 type="number"
                 min="0"
@@ -220,11 +224,11 @@ import {
                 [value]="autoPauseThresholdKmh()"
                 (change)="setAutoPauseThresholdKmh(toNum($event))"
                 [disabled]="!autoPauseEnabled()"
-                class="w-full rounded-lg bg-slate-900 border border-slate-800 px-3 py-2 text-sm tabular-nums disabled:opacity-50"
+                class="w-full rounded-lg bg-surface-container-low border border-white/10 px-3 py-2 text-sm tabular-nums disabled:opacity-50"
               />
             </label>
             <label class="block">
-              <span class="block text-xs text-slate-500 mb-1">Delay (sec)</span>
+              <span class="block text-xs text-on-surface-variant mb-1">Delay (sec)</span>
               <input
                 type="number"
                 min="1"
@@ -233,12 +237,12 @@ import {
                 [value]="autoPauseDelaySec()"
                 (change)="setAutoPauseDelaySec(toNum($event))"
                 [disabled]="!autoPauseEnabled()"
-                class="w-full rounded-lg bg-slate-900 border border-slate-800 px-3 py-2 text-sm tabular-nums disabled:opacity-50"
+                class="w-full rounded-lg bg-surface-container-low border border-white/10 px-3 py-2 text-sm tabular-nums disabled:opacity-50"
               />
             </label>
           </div>
 
-          <p class="text-xs text-slate-500">
+          <p class="text-xs text-on-surface-variant">
             Resumes immediately once you start moving again. Useful for red
             lights, coffee stops, regroups. Verify in the simulator by sliding
             Speed to 0.
@@ -246,8 +250,8 @@ import {
         </fieldset>
 
         <!-- Display -->
-        <fieldset class="space-y-3 border-t border-slate-800 pt-6">
-          <legend class="text-xs uppercase tracking-wider text-slate-500 mb-1">
+        <fieldset class="space-y-3 border-t border-white/10 pt-6">
+          <legend class="font-grotesk text-label-caps text-velo-lime uppercase mb-1">
             Display
           </legend>
 
@@ -258,17 +262,17 @@ import {
                 type="button"
                 (click)="setRecordLayout('two-col')"
                 class="flex-1 px-3 py-2 rounded-md border text-sm"
-                [class.bg-sky-900\/40]="recordLayout() === 'two-col'"
-                [class.border-sky-600]="recordLayout() === 'two-col'"
-                [class.border-slate-700]="recordLayout() !== 'two-col'"
+                [class.bg-velo-lime/10]="recordLayout() === 'two-col'"
+                [class.border-velo-lime]="recordLayout() === 'two-col'"
+                [class.border-white/10]="recordLayout() !== 'two-col'"
               >2 columns</button>
               <button
                 type="button"
                 (click)="setRecordLayout('one-col')"
                 class="flex-1 px-3 py-2 rounded-md border text-sm"
-                [class.bg-sky-900\/40]="recordLayout() === 'one-col'"
-                [class.border-sky-600]="recordLayout() === 'one-col'"
-                [class.border-slate-700]="recordLayout() !== 'one-col'"
+                [class.bg-velo-lime/10]="recordLayout() === 'one-col'"
+                [class.border-velo-lime]="recordLayout() === 'one-col'"
+                [class.border-white/10]="recordLayout() !== 'one-col'"
               >1 column · big</button>
             </div>
           </div>
@@ -277,18 +281,18 @@ import {
             <p class="text-sm mb-2">Tiles to show</p>
             <div class="space-y-1.5">
               @for (t of allTiles; track t.id) {
-                <label class="flex items-center justify-between gap-3 px-2 py-1.5 rounded hover:bg-slate-900">
+                <label class="flex items-center justify-between gap-3 px-2 py-1.5 rounded hover:bg-surface-container-low">
                   <span class="text-sm">{{ t.label }}</span>
                   <input
                     type="checkbox"
                     [checked]="isTileEnabled(t.id)"
                     (change)="toggleTile(t.id, toBool($event))"
-                    class="w-5 h-5 accent-sky-500"
+                    class="w-5 h-5 accent-velo-lime"
                   />
                 </label>
               }
             </div>
-            <p class="mt-2 text-xs text-slate-500">
+            <p class="mt-2 text-xs text-on-surface-variant">
               Fewer tiles = bigger numbers. Pick 2 + "1 column" for handlebar-
               legible mode.
             </p>
