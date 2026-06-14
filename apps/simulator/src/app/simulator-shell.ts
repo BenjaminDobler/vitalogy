@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { FeatureRecord } from 'feature-record';
+import { RouterOutlet } from '@angular/router';
 import { ReplayDriver, SensorSim } from 'dev-sim';
 import { RecordingService } from 'recording';
 import {
@@ -29,7 +29,7 @@ type SimMode = 'synthetic' | 'replay';
 @Component({
   selector: 'app-simulator-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, FormsModule, FeatureRecord],
+  imports: [DecimalPipe, FormsModule, RouterOutlet],
   template: `
     <div class="min-h-screen bg-slate-100 text-slate-900 flex">
       <aside class="w-[360px] border-r border-slate-300 bg-white p-5 flex flex-col gap-5 overflow-y-auto">
@@ -292,7 +292,7 @@ type SimMode = 'synthetic' | 'replay';
 
       <main class="flex-1 flex items-center justify-center p-8 overflow-y-auto">
         <div class="w-[390px] max-w-full shadow-2xl rounded-[40px] overflow-hidden border border-slate-300">
-          <lib-feature-record />
+          <router-outlet />
         </div>
       </main>
     </div>
