@@ -133,10 +133,10 @@ export class StravaService {
     opts: { force?: boolean } = {},
   ): Promise<{ streams: number; laps: number; cached: boolean }> {
     const activity = await this.prisma.activity.findFirst({
-      where: { id: activityId, userId, source: 'STRAVA' },
+      where: { id: activityId, userId },
     });
     if (!activity) {
-      throw new Error(`Activity not found or not from Strava: ${activityId}`);
+      throw new Error(`Activity not found: ${activityId}`);
     }
 
     if (!opts.force) {
@@ -147,6 +147,18 @@ export class StravaService {
       if (existingStreams > 0) {
         return { streams: existingStreams, laps: existingLaps, cached: true };
       }
+    }
+
+    // Non-Strava activities (manual uploads, future FIT/TCX/GPX imports) come
+    // complete with streams and laps already populated by their importer.
+    // There's nothing to fetch from a remote source — treat as cached so the
+    // web detail page's universal "make sure detail is loaded" call succeeds.
+    if (activity.source !== 'STRAVA') {
+      const [streams, laps] = await Promise.all([
+        this.prisma.stream.count({ where: { activityId } }),
+        this.prisma.lap.count({ where: { activityId } }),
+      ]);
+      return { streams, laps, cached: true };
     }
 
     const account = await this.prisma.stravaAccount.findUnique({ where: { userId } });
