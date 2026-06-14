@@ -74,7 +74,7 @@ export class ActivitiesService {
         avgCadence: stats.avgCadence,
         trainerActivity: false,
         commute: false,
-        raw: { samples: req.samples } as object,
+        raw: { samples: req.samples, lapSplits: req.lapSplits ?? [] } as object,
       },
     });
 
@@ -82,6 +82,19 @@ export class ActivitiesService {
     const streamsToCreate = buildStreams(req.samples, created.id);
     if (streamsToCreate.length > 0) {
       await this.prisma.stream.createMany({ data: streamsToCreate });
+    }
+
+    // Build laps from the split markers. Empty splits → single implicit lap,
+    // no rows created.
+    const lapsToCreate = buildLaps(
+      req.samples,
+      req.lapSplits ?? [],
+      new Date(req.startedAt),
+      stats.durationSec,
+      created.id,
+    );
+    if (lapsToCreate.length > 0) {
+      await this.prisma.lap.createMany({ data: lapsToCreate });
     }
 
     return { activityId: created.id, alreadyExisted: false };
@@ -229,6 +242,102 @@ function buildStreams(
 
 function hasValue(arr: Array<unknown>): boolean {
   return arr.some((v) => v != null);
+}
+
+/**
+ * Turn lap split markers into Lap rows by bucketing samples into the windows
+ * [0, splits[0]), [splits[0], splits[1]), ..., [splits[N-1], totalDuration].
+ *
+ * Returns [] if there are no splits — the whole session is one implicit lap
+ * and we don't bother persisting a row for it (matches Strava's behavior
+ * for laps-less activities).
+ */
+function buildLaps(
+  samples: UploadSample[],
+  splits: number[],
+  sessionStart: Date,
+  totalDurationSec: number,
+  activityId: string,
+): Array<{
+  activityId: string;
+  lapIndex: number;
+  name: string | null;
+  startTime: Date;
+  durationSec: number;
+  distanceM: number;
+  avgWatts: number | null;
+  avgHeartrate: number | null;
+  avgSpeedMps: number | null;
+  elevationGainM: number | null;
+}> {
+  if (splits.length === 0) return [];
+  const totalMs = totalDurationSec * 1000;
+  const boundaries = [0, ...splits, totalMs];
+
+  const out: Array<{
+    activityId: string;
+    lapIndex: number;
+    name: string | null;
+    startTime: Date;
+    durationSec: number;
+    distanceM: number;
+    avgWatts: number | null;
+    avgHeartrate: number | null;
+    avgSpeedMps: number | null;
+    elevationGainM: number | null;
+  }> = [];
+
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const startMs = boundaries[i];
+    const endMs = boundaries[i + 1];
+    const lapSamples = samples.filter((s) => s.t >= startMs && s.t < endMs);
+
+    let firstDist: number | null = null;
+    let lastDist: number | null = null;
+    let sumHr = 0,
+      countHr = 0;
+    let sumSpeed = 0,
+      countSpeed = 0;
+    let elevGain = 0;
+    let prevAlt: number | null = null;
+
+    for (const s of lapSamples) {
+      if (s.distanceM != null) {
+        if (firstDist == null) firstDist = s.distanceM;
+        lastDist = s.distanceM;
+      }
+      if (s.hr != null) {
+        sumHr += s.hr;
+        countHr++;
+      }
+      if (s.speedMps != null) {
+        sumSpeed += s.speedMps;
+        countSpeed++;
+      }
+      if (s.altitudeM != null) {
+        if (prevAlt != null && s.altitudeM > prevAlt) {
+          elevGain += s.altitudeM - prevAlt;
+        }
+        prevAlt = s.altitudeM;
+      }
+    }
+
+    out.push({
+      activityId,
+      lapIndex: i + 1,
+      name: null,
+      startTime: new Date(sessionStart.getTime() + startMs),
+      durationSec: Math.max(0, Math.round((endMs - startMs) / 1000)),
+      distanceM:
+        firstDist != null && lastDist != null ? lastDist - firstDist : 0,
+      avgWatts: null,
+      avgHeartrate: countHr > 0 ? sumHr / countHr : null,
+      avgSpeedMps: countSpeed > 0 ? sumSpeed / countSpeed : null,
+      elevationGainM: prevAlt != null ? Math.round(elevGain) : null,
+    });
+  }
+
+  return out;
 }
 
 function defaultName(startedAt: string): string {

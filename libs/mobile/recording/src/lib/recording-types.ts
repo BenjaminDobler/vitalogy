@@ -23,6 +23,12 @@ export interface RecordingSession {
   startedAt: number;
   endedAt?: number;
   samples: RecordingSample[];
+  /**
+   * Lap boundary timestamps in ms since session start. Each entry marks the
+   * END of a lap. Empty array = the whole session is lap 1.
+   * Example: [600000, 1200000] → three laps: 0–10min, 10–20min, 20–end.
+   */
+  lapSplits: number[];
 }
 
 export interface LiveStats {

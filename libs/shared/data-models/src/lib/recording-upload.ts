@@ -16,6 +16,11 @@ export interface UploadActivityRequest {
   endedAt: string;
   /** 1Hz sample timeline. */
   samples: UploadSample[];
+  /**
+   * Lap boundaries (ms since session start). Each entry is the END of a lap.
+   * Empty / undefined = the whole session is lap 1 (and no Lap rows get created).
+   */
+  lapSplits?: number[];
 }
 
 export interface UploadSample {

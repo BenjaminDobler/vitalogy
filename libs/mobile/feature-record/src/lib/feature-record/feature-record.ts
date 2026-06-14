@@ -210,7 +210,7 @@ import { GpsTracker, RecordingService, UploadQueue } from 'recording';
 
         @if (recording()) {
           <div class="px-5 pb-2 text-center text-sm text-slate-400 tabular-nums">
-            {{ durationText() }}
+            {{ durationText() }} · Lap {{ currentLap() }}
           </div>
         }
 
@@ -224,12 +224,20 @@ import { GpsTracker, RecordingService, UploadQueue } from 'recording';
               Start recording
             </button>
           } @else {
-            <button
-              (click)="stopRecording()"
-              class="w-full py-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-lg font-semibold"
-            >
-              Stop
-            </button>
+            <div class="flex gap-2">
+              <button
+                (click)="markLap()"
+                class="flex-1 py-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-lg font-semibold"
+              >
+                Lap
+              </button>
+              <button
+                (click)="stopRecording()"
+                class="flex-1 py-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-lg font-semibold"
+              >
+                Stop
+              </button>
+            </div>
           }
         </div>
       }
@@ -284,6 +292,7 @@ export class FeatureRecord {
   protected readonly durationText = computed(() =>
     formatDuration(this.stats()?.durationSec ?? 0),
   );
+  protected readonly currentLap = this.recordingService.currentLap;
 
   async scan(): Promise<void> {
     this.errorMsg.set(null);
@@ -392,6 +401,10 @@ export class FeatureRecord {
   /** Manual retry from the pending-uploads banner. */
   retryUploads(): void {
     void this.uploadQueue.flush();
+  }
+
+  markLap(): void {
+    this.recordingService.markLap();
   }
 }
 

@@ -48,6 +48,7 @@ export class RecordingService {
       id: crypto.randomUUID(),
       startedAt: now,
       samples: [],
+      lapSplits: [],
     };
     this.session.set(session);
     this.latest.set(null);
@@ -79,6 +80,29 @@ export class RecordingService {
     this.partial.lng = lng;
     if (altitudeM != null) this.partial.altitudeM = altitudeM;
   }
+
+  /**
+   * Drop a lap boundary at the current time. The lap that was in progress
+   * closes, and a new one starts. No-op if no session is in progress or the
+   * caller taps Lap twice within the same flush window.
+   */
+  markLap(): void {
+    const s = this.session();
+    if (!s) return;
+    const t = Date.now() - s.startedAt;
+    const splits = s.lapSplits;
+    // Prevent accidental double-tap (same flush window) → no zero-length laps.
+    if (splits.length > 0 && t - splits[splits.length - 1] < 500) return;
+    const nextSplits = [...splits, t];
+    this.session.set({ ...s, lapSplits: nextSplits });
+  }
+
+  /** 1-based current lap index — what you'd display next to "Stop". */
+  readonly currentLap = computed<number>(() => {
+    const s = this.session();
+    if (!s) return 0;
+    return s.lapSplits.length + 1;
+  });
 
   private ingest(r: BleReading): void {
     if (!this.session()) return;
