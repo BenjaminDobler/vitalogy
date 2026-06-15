@@ -9,6 +9,7 @@ import type {
 } from 'data-models';
 import { AthleteSettingsService } from '../athlete-settings.service.js';
 import { TrainingLoadChartComponent } from '../training-load-chart/training-load-chart.component.js';
+import { recommendWorkout } from '../workout-recommendation.js';
 
 interface PrCard {
   key: string;
@@ -38,6 +39,37 @@ interface PrCard {
     </div>
 
     @if (load(); as l) {
+      @if (recommendation(); as r) {
+        <section class="mb-6">
+          <h2 class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">
+            Today's recommendation
+          </h2>
+          <div
+            class="velo-glass rounded-xl p-5 flex flex-col sm:flex-row sm:items-center gap-4 border-l-4"
+            [class.border-rose-400]="r.tone === 'rest'"
+            [class.border-orange-400]="r.tone === 'recover'"
+            [class.border-sky-300]="r.tone === 'building'"
+            [class.border-velo-lime]="r.tone === 'push' || r.tone === 'sharpen' || r.tone === 'maintain'"
+          >
+            <div class="flex-1 min-w-0">
+              <div class="font-sora text-2xl text-on-surface uppercase tracking-tight"
+                   [class.text-rose-300]="r.tone === 'rest'"
+                   [class.text-velo-lime]="r.tone !== 'rest'">
+                {{ r.type }}
+              </div>
+              @if (r.durationMin > 0) {
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase tracking-wider text-xs mt-1 tabular-nums">
+                  {{ r.durationMin }} min · IF {{ r.targetIf | number: '1.2-2' }} · ~{{ r.targetLoad }} TSS
+                </div>
+              }
+            </div>
+            <p class="text-sm text-on-surface-variant flex-1 sm:max-w-md">
+              {{ r.reason }}
+            </p>
+          </div>
+        </section>
+      }
+
       <section class="mb-8">
         <h2 class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">
           Training load · last {{ l.inputs.days }} days
@@ -159,6 +191,7 @@ export class FeatureActivities {
   protected readonly activities = signal<Activity[]>([]);
   protected readonly achievements = signal<AchievementsResponse | null>(null);
   protected readonly load = signal<TrainingLoadResponse | null>(null);
+  protected readonly recommendation = computed(() => recommendWorkout(this.load()));
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
 
