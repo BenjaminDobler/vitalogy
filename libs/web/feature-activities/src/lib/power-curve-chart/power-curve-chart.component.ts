@@ -5,7 +5,7 @@ import {
   input,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import type { PowerCurvePoint } from '../training-metrics.js';
+import type { PowerCurvePoint } from 'training-metrics';
 
 /**
  * SVG line chart of best-mean-max power across canonical durations.

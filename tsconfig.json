@@ -80,6 +80,9 @@
     },
     {
       "path": "./libs/web/feature-profile"
+    },
+    {
+      "path": "./libs/shared/training-metrics"
     }
   ]
 }

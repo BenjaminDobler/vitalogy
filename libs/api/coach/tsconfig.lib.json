@@ -24,7 +24,16 @@
       "path": "../auth/tsconfig.lib.json"
     },
     {
+      "path": "../ai/tsconfig.lib.json"
+    },
+    {
+      "path": "../activities/tsconfig.lib.json"
+    },
+    {
       "path": "../../shared/data-models/tsconfig.lib.json"
+    },
+    {
+      "path": "../../shared/training-metrics/tsconfig.lib.json"
     }
   ],
   "exclude": [

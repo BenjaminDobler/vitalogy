@@ -4,7 +4,7 @@ import {
   computed,
   input,
 } from '@angular/core';
-import type { HrZoneBreakdown } from '../training-metrics.js';
+import type { HrZoneBreakdown } from 'training-metrics';
 
 interface ZoneSpec {
   key: keyof HrZoneBreakdown;

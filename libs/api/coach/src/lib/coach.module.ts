@@ -1,19 +1,24 @@
 import { Module } from '@nestjs/common';
 import { DbModule } from 'db';
+import { AiModule } from 'ai';
+import { ActivitiesModule } from 'activities';
+import { ChatController } from './chat.controller.js';
+import { ChatService } from './chat.service.js';
+import { CoachToolsService } from './coach-tools.js';
 import { MemoryController } from './memory.controller.js';
 import { MemoryService } from './memory.service.js';
 import { ProfileController } from './profile.controller.js';
 import { ProfileService } from './profile.service.js';
 
 /**
- * Coach surface area — profile, memories, and (Phase 2) the conversational
- * chat + tool-use loop. Grouped here because the chat tools reach into
- * profile + memories so heavily that splitting them feels artificial.
+ * Coach surface area — profile, memories, and the conversational chat +
+ * tool-use loop. The chat service depends on profile + memories +
+ * activities + the Anthropic SDK, which is why we keep them all here.
  */
 @Module({
-  imports: [DbModule],
-  controllers: [ProfileController, MemoryController],
-  providers: [ProfileService, MemoryService],
+  imports: [DbModule, AiModule, ActivitiesModule],
+  controllers: [ProfileController, MemoryController, ChatController],
+  providers: [ProfileService, MemoryService, CoachToolsService, ChatService],
   exports: [ProfileService, MemoryService],
 })
 export class CoachModule {}

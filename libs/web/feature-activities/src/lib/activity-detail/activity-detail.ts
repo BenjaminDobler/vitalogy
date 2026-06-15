@@ -26,7 +26,7 @@ import {
   totalKilojoules,
   trimp,
   tss,
-} from '../training-metrics.js';
+} from 'training-metrics';
 
 interface ImportResult {
   streams: number;
