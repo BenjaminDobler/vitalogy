@@ -7,6 +7,7 @@ import { RouteMapComponent, StreamChartComponent } from 'ui';
 import {
   compassCardinal,
   describeWeather,
+  type AchievementsResponse,
   type ActivityDetail,
   type ActivityStream,
   type StreamType,
@@ -99,6 +100,16 @@ const CHART_SPECS: ChartSpec[] = [
                 · <span class="text-on-surface-variant">indoor</span>
               }
             </p>
+            @if (prBadges().length > 0) {
+              <div class="mt-3 flex flex-wrap gap-2">
+                @for (b of prBadges(); track b.key) {
+                  <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-velo-lime/15 border border-velo-lime/30 text-velo-lime text-[11px] font-grotesk uppercase tracking-wider">
+                    <span class="material-symbols-outlined text-[14px]">{{ b.icon }}</span>
+                    {{ b.label }}
+                  </span>
+                }
+              </div>
+            }
           </div>
           @if (canExportToStrava(a)) {
             <button
@@ -447,6 +458,31 @@ export class ActivityDetailComponent {
   protected readonly loading = signal(true);
   protected readonly importStatus = signal<string | null>(null);
   protected readonly error = signal<string | null>(null);
+  protected readonly achievements = signal<AchievementsResponse | null>(null);
+
+  /**
+   * Which lifetime PRs (if any) this activity currently holds. Recomputed
+   * whenever the achievements payload or the current id changes.
+   */
+  protected readonly prBadges = computed(() => {
+    const a = this.achievements();
+    const id = this.id();
+    if (!a || !id) return [];
+    const out: { key: string; icon: string; label: string }[] = [];
+    if (a.longestDistance?.activity.id === id)
+      out.push({ key: 'd', icon: 'route', label: 'Longest ride' });
+    if (a.mostElevation?.activity.id === id)
+      out.push({ key: 'e', icon: 'landscape', label: 'Most elevation' });
+    if (a.longestDuration?.activity.id === id)
+      out.push({ key: 't', icon: 'schedule', label: 'Longest time' });
+    if (a.highestAvgSpeed?.activity.id === id)
+      out.push({ key: 's', icon: 'trending_up', label: 'Fastest avg' });
+    if (a.highestMaxSpeed?.activity.id === id)
+      out.push({ key: 'm', icon: 'bolt', label: 'Top speed' });
+    if (a.fastestLap?.activity.id === id)
+      out.push({ key: 'l', icon: 'speed', label: 'Fastest lap' });
+    return out;
+  });
 
   protected readonly exporting = signal(false);
   protected readonly exportError = signal<string | null>(null);
@@ -586,6 +622,13 @@ export class ActivityDetailComponent {
     // Re-fetch whenever the route id changes (Angular re-uses the component
     // when navigating between sibling :id routes).
     effect(() => this.load(this.id()));
+    // Achievements are user-level; load once on mount.
+    this.http
+      .get<AchievementsResponse>('/api/activities/achievements')
+      .subscribe({
+        next: (r) => this.achievements.set(r),
+        error: () => this.achievements.set(null),
+      });
   }
 
   private load(id: string): void {

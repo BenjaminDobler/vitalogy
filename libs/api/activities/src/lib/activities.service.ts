@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'db';
 import type {
+  AchievementActivityStub,
+  AchievementsResponse,
   Activity,
   ActivityDetail,
   ActivityStream,
@@ -143,7 +145,121 @@ export class ActivitiesService {
       })),
     };
   }
+
+  /**
+   * Lifetime PRs across the user's activities. Six categories — one
+   * activity may hold multiple. Each entry includes the source activity
+   * stub so the UI can link straight to its detail page.
+   */
+  async achievements(userId: string): Promise<AchievementsResponse> {
+    const pickActivity = async (orderBy: Record<string, 'desc'>, where?: object) =>
+      this.prisma.activity.findFirst({
+        where: { userId, ...(where ?? {}) },
+        orderBy,
+        select: {
+          id: true,
+          name: true,
+          startTime: true,
+          distanceM: true,
+          elevationGainM: true,
+          durationSec: true,
+          avgSpeedMps: true,
+          maxSpeedMps: true,
+          sportType: true,
+        },
+      });
+
+    const [
+      longest,
+      mostElev,
+      longestTime,
+      fastestAvg,
+      highestMax,
+    ] = await Promise.all([
+      pickActivity({ distanceM: 'desc' }),
+      pickActivity({ elevationGainM: 'desc' }, { elevationGainM: { not: null } }),
+      pickActivity({ durationSec: 'desc' }),
+      pickActivity({ avgSpeedMps: 'desc' }, { avgSpeedMps: { not: null } }),
+      pickActivity({ maxSpeedMps: 'desc' }, { maxSpeedMps: { not: null } }),
+    ]);
+
+    // Best lap by avg speed across all activities (only for laps that have
+    // a recorded avg speed — Strava sometimes returns null).
+    const bestLap = await this.prisma.lap.findFirst({
+      where: {
+        avgSpeedMps: { not: null },
+        activity: { userId },
+      },
+      orderBy: { avgSpeedMps: 'desc' },
+      select: {
+        lapIndex: true,
+        avgSpeedMps: true,
+        distanceM: true,
+        durationSec: true,
+        activity: {
+          select: { id: true, name: true, startTime: true, sportType: true },
+        },
+      },
+    });
+
+    const toStub = (
+      a: NonNullable<Awaited<ReturnType<typeof pickActivity>>>,
+    ): AchievementActivityStub => ({
+      id: a.id,
+      name: a.name,
+      startTime: a.startTime.toISOString(),
+      sportType: a.sportType,
+    });
+
+    return {
+      longestDistance:
+        longest && longest.distanceM > 0
+          ? { activity: toStub(longest), valueM: longest.distanceM }
+          : null,
+      mostElevation:
+        mostElev && mostElev.elevationGainM != null
+          ? { activity: toStub(mostElev), valueM: mostElev.elevationGainM }
+          : null,
+      longestDuration:
+        longestTime && longestTime.durationSec > 0
+          ? {
+              activity: toStub(longestTime),
+              valueSec: longestTime.durationSec,
+            }
+          : null,
+      highestAvgSpeed:
+        fastestAvg && fastestAvg.avgSpeedMps != null
+          ? {
+              activity: toStub(fastestAvg),
+              valueMps: fastestAvg.avgSpeedMps,
+            }
+          : null,
+      highestMaxSpeed:
+        highestMax && highestMax.maxSpeedMps != null
+          ? {
+              activity: toStub(highestMax),
+              valueMps: highestMax.maxSpeedMps,
+            }
+          : null,
+      fastestLap:
+        bestLap && bestLap.avgSpeedMps != null
+          ? {
+              activity: {
+                id: bestLap.activity.id,
+                name: bestLap.activity.name,
+                startTime: bestLap.activity.startTime.toISOString(),
+                sportType: bestLap.activity.sportType,
+              },
+              lapIndex: bestLap.lapIndex,
+              valueMps: bestLap.avgSpeedMps,
+              distanceM: bestLap.distanceM,
+              durationSec: bestLap.durationSec,
+            }
+          : null,
+    };
+  }
 }
+
 
 interface RecordingStats {
   /** Total wall-clock duration in seconds. */

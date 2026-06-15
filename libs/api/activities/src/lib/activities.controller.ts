@@ -19,6 +19,16 @@ export class ActivitiesController {
     });
   }
 
+  /**
+   * Lifetime PRs across the user's activities. Listed BEFORE `:id` so the
+   * static path wins the route match (Nest matches in declaration order
+   * for the same HTTP verb when the dynamic segment would otherwise gobble it).
+   */
+  @Get('achievements')
+  achievements(@UserId() userId: string) {
+    return this.activities.achievements(userId);
+  }
+
   @Get(':id')
   get(@UserId() userId: string, @Param('id') id: string) {
     return this.activities.get(userId, id);
