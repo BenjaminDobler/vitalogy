@@ -243,8 +243,8 @@ export class RecordingService {
     // duration, the comparison is just "best lap's total distance."
     const bestTargetMs = Math.min(bestStartMs + elapsedInCurrent, bestEndMs);
 
-    const bestDist = distanceWithin(s.samples, bestStartMs, bestTargetMs);
-    const currentDist = distanceWithin(
+    const bestDist = windowDistance(s.samples, bestStartMs, bestTargetMs);
+    const currentDist = windowDistance(
       s.samples,
       currentLapStartMs,
       currentLapStartMs + elapsedInCurrent,
@@ -292,10 +292,10 @@ export class RecordingService {
     const s = this.session();
     if (!s) return null;
     const splits = s.lapSplits;
-    const lapStartT = splits.length > 0 ? splits[splits.length - 1] : 0;
-    const lapDurationMs = this.now() - s.startedAt - lapStartT;
-    const lapSamples = s.samples.filter((sm) => sm.t >= lapStartT);
-    return computeLapStats(lapSamples, lapDurationMs);
+    const lapStartMs = splits.length > 0 ? splits[splits.length - 1] : 0;
+    const lapEndMs = this.now() - s.startedAt;
+    const lapSamples = s.samples.filter((sm) => sm.t >= lapStartMs);
+    return computeLapStats(lapSamples, lapStartMs, lapEndMs);
   });
 
   private ingest(r: BleReading): void {
@@ -340,24 +340,6 @@ function findBestLapDurationSec(splits: number[]): number | null {
   return bestMs / 1000;
 }
 
-/** Delta of the cumulative-distance reading across samples in [startMs, endMs]. */
-function distanceWithin(
-  samples: RecordingSample[],
-  startMs: number,
-  endMs: number,
-): number {
-  let first: number | null = null;
-  let last: number | null = null;
-  for (const s of samples) {
-    if (s.t < startMs || s.t > endMs) continue;
-    if (s.distanceM != null) {
-      if (first == null) first = s.distanceM;
-      last = s.distanceM;
-    }
-  }
-  return first != null && last != null ? last - first : 0;
-}
-
 /** Total paused milliseconds in [0, nowMs]. In-flight segment uses `nowMs` as its end. */
 function pausedMsTotal(segments: PauseSegment[], nowMs: number): number {
   let total = 0;
@@ -374,16 +356,18 @@ function pausedMsTotal(segments: PauseSegment[], nowMs: number): number {
  * the *delta* across this lap (last cumulative - first cumulative), not the
  * absolute cumulative reading. Same for avg speed.
  */
-function computeLapStats(samples: RecordingSample[], durationMs: number): LiveStats {
-  const durationSec = Math.max(0, Math.round(durationMs / 1000));
+function computeLapStats(
+  samples: RecordingSample[],
+  lapStartMs: number,
+  lapEndMs: number,
+): LiveStats {
+  const durationSec = Math.max(0, Math.round((lapEndMs - lapStartMs) / 1000));
   let sumHr = 0;
   let countHr = 0;
   let maxHr = 0;
   let sumCadence = 0;
   let countCadence = 0;
   let maxSpeed = 0;
-  let firstDistance: number | null = null;
-  let lastDistance: number | null = null;
 
   for (const s of samples) {
     if (s.hr != null) {
@@ -396,16 +380,9 @@ function computeLapStats(samples: RecordingSample[], durationMs: number): LiveSt
       countCadence++;
     }
     if (s.speedMps != null && s.speedMps > maxSpeed) maxSpeed = s.speedMps;
-    if (s.distanceM != null) {
-      if (firstDistance == null) firstDistance = s.distanceM;
-      lastDistance = s.distanceM;
-    }
   }
 
-  const lapDistance =
-    firstDistance != null && lastDistance != null
-      ? Math.max(0, lastDistance - firstDistance)
-      : 0;
+  const lapDistance = windowDistance(samples, lapStartMs, lapEndMs);
 
   return {
     durationSec,
@@ -418,6 +395,44 @@ function computeLapStats(samples: RecordingSample[], durationMs: number): LiveSt
       lapDistance > 0 && durationSec > 0 ? lapDistance / durationSec : undefined,
     maxSpeedMps: maxSpeed > 0 ? maxSpeed : undefined,
   };
+}
+
+/**
+ * Distance moved during [startMs, endMs] from CSC cumulative readings,
+ * with boundary extrapolation using the bracketing samples' speed so
+ * the first/last fraction-of-a-second isn't lost.
+ *
+ *   distance = (last.cumulative − first.cumulative)
+ *            + first.speed × (first.t − startMs)      // lead-in
+ *            + last.speed  × (endMs − last.t)         // trail-out
+ *
+ * Without the extrapolation a 13s ride @ 10km/h shows ~9.2km/h because
+ * the first CSC reading lands ~1s into the recording. The lead-in covers
+ * that missing slice. Negligible for long rides; matters for short ones.
+ */
+function windowDistance(
+  samples: RecordingSample[],
+  startMs: number,
+  endMs: number,
+): number {
+  let firstSample: RecordingSample | null = null;
+  let lastSample: RecordingSample | null = null;
+  for (const s of samples) {
+    if (s.t < startMs || s.t > endMs) continue;
+    if (s.distanceM != null) {
+      if (firstSample == null) firstSample = s;
+      lastSample = s;
+    }
+  }
+  if (!firstSample || !lastSample || firstSample.distanceM == null || lastSample.distanceM == null) {
+    return 0;
+  }
+  const sensorDelta = lastSample.distanceM - firstSample.distanceM;
+  const leadIn =
+    (firstSample.speedMps ?? 0) * Math.max(0, (firstSample.t - startMs) / 1000);
+  const trailOut =
+    (lastSample.speedMps ?? 0) * Math.max(0, (endMs - lastSample.t) / 1000);
+  return Math.max(0, sensorDelta + leadIn + trailOut);
 }
 
 function computeStats(
@@ -435,11 +450,6 @@ function computeStats(
   let sumCadence = 0;
   let countCadence = 0;
   let maxSpeed = 0;
-  // CSC sensors report cumulative distance since sensor power-on, not
-  // session start. Track the first reading so session distance is the
-  // delta within the recording window (same logic as lap distance).
-  let firstDistance: number | null = null;
-  let lastDistance: number | null = null;
   for (const s of samples) {
     if (s.hr != null) {
       sumHr += s.hr;
@@ -453,15 +463,8 @@ function computeStats(
     if (s.speedMps != null && s.speedMps > maxSpeed) {
       maxSpeed = s.speedMps;
     }
-    if (s.distanceM != null) {
-      if (firstDistance == null) firstDistance = s.distanceM;
-      lastDistance = s.distanceM;
-    }
   }
-  const sessionDistance =
-    firstDistance != null && lastDistance != null
-      ? Math.max(0, lastDistance - firstDistance)
-      : 0;
+  const sessionDistance = windowDistance(samples, 0, elapsedMs);
   return {
     durationSec: movingSec,
     elapsedSec,

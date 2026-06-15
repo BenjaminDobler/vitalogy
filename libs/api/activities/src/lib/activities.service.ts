@@ -290,12 +290,8 @@ function summarize(
       1000,
   );
   const movingSec = Math.max(0, elapsedSec - pausedSec);
+  const elapsedMs = elapsedSec * 1000;
 
-  // CSC sensors report cumulative distance since sensor power-on, not
-  // session start. Distance for the ride is the delta between the first
-  // and last observed cumulative readings.
-  let firstDistance: number | null = null;
-  let lastDistance: number | null = null;
   let sumHr = 0,
     countHr = 0,
     maxHr = 0;
@@ -306,10 +302,6 @@ function summarize(
   let prevAlt: number | null = null;
 
   for (const s of samples) {
-    if (s.distanceM != null) {
-      if (firstDistance == null) firstDistance = s.distanceM;
-      lastDistance = s.distanceM;
-    }
     if (s.hr != null) {
       sumHr += s.hr;
       countHr++;
@@ -328,10 +320,12 @@ function summarize(
     }
   }
 
-  const sessionDistance =
-    firstDistance != null && lastDistance != null
-      ? Math.max(0, lastDistance - firstDistance)
-      : 0;
+  // CSC sensors report cumulative distance since sensor power-on, not
+  // session start. Distance is the delta between first and last observed
+  // cumulative readings, extrapolated at both boundaries using the
+  // bracketing samples' speed (otherwise the first/last fraction-of-a-
+  // second is lost — material for short rides).
+  const sessionDistance = windowDistance(samples, 0, elapsedMs);
 
   return {
     elapsedSec,
@@ -372,7 +366,7 @@ function buildStreams(
   // Rebase cumulative-from-sensor distance to cumulative-from-session-start
   // so the stream + downstream consumers (charts, TCX export, etc.) see
   // 0 at t=0 instead of whatever the sensor had counted before recording.
-  const distance = rebaseDistance(samples.map((s) => s.distanceM ?? null));
+  const distance = rebaseDistance(samples);
   const altitude = samples.map((s) => s.altitudeM ?? null);
   const latlng = samples
     .map((s) => (s.lat != null && s.lng != null ? [s.lat, s.lng] : null));
@@ -403,14 +397,58 @@ function hasValue(arr: Array<unknown>): boolean {
 }
 
 /**
- * Subtract the first non-null distance reading from all subsequent ones so
- * the stream starts at 0. Nulls pass through unchanged.
+ * Rebase cumulative-from-sensor distance to cumulative-from-session-start.
+ * Anchors the implied "t=0" cumulative by extrapolating the first sample
+ * backwards using its speed, so the stream starts at the actual distance
+ * the rider had moved before the first reading rather than at zero. Nulls
+ * pass through.
  */
-function rebaseDistance(distances: (number | null)[]): (number | null)[] {
-  const firstIdx = distances.findIndex((v) => v != null);
-  if (firstIdx === -1) return distances;
-  const base = distances[firstIdx] as number;
-  return distances.map((v) => (v == null ? null : Math.max(0, v - base)));
+function rebaseDistance(samples: UploadSample[]): (number | null)[] {
+  const firstWithDist = samples.find((s) => s.distanceM != null);
+  if (!firstWithDist) return samples.map(() => null);
+  const firstDist = firstWithDist.distanceM as number;
+  const firstSpeed = firstWithDist.speedMps ?? 0;
+  // Estimated cumulative at session start (t=0).
+  const baseAtStart = firstDist - (firstSpeed * firstWithDist.t) / 1000;
+  return samples.map((s) =>
+    s.distanceM != null ? Math.max(0, s.distanceM - baseAtStart) : null,
+  );
+}
+
+/**
+ * Total distance moved during [startMs, endMs] from CSC cumulative readings,
+ * extrapolated at both boundaries using the bracketing samples' speed.
+ * See the mobile recording.service.ts copy for the formula rationale.
+ */
+function windowDistance(
+  samples: UploadSample[],
+  startMs: number,
+  endMs: number,
+): number {
+  let firstSample: UploadSample | null = null;
+  let lastSample: UploadSample | null = null;
+  for (const s of samples) {
+    if (s.t < startMs || s.t > endMs) continue;
+    if (s.distanceM != null) {
+      if (firstSample == null) firstSample = s;
+      lastSample = s;
+    }
+  }
+  if (
+    !firstSample ||
+    !lastSample ||
+    firstSample.distanceM == null ||
+    lastSample.distanceM == null
+  ) {
+    return 0;
+  }
+  const sensorDelta = lastSample.distanceM - firstSample.distanceM;
+  const leadIn =
+    (firstSample.speedMps ?? 0) *
+    Math.max(0, (firstSample.t - startMs) / 1000);
+  const trailOut =
+    (lastSample.speedMps ?? 0) * Math.max(0, (endMs - lastSample.t) / 1000);
+  return Math.max(0, sensorDelta + leadIn + trailOut);
 }
 
 /**
