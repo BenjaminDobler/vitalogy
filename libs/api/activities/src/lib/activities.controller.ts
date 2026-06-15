@@ -29,6 +29,27 @@ export class ActivitiesController {
     return this.activities.achievements(userId);
   }
 
+  /**
+   * Banister CTL/ATL/TSB across the last N days. FTP / max HR / rest HR
+   * come from the client (localStorage AthleteSettings) so server doesn't
+   * need to persist them.
+   */
+  @Get('training-load')
+  trainingLoad(
+    @UserId() userId: string,
+    @Query('days') days?: string,
+    @Query('ftp') ftp?: string,
+    @Query('maxHr') maxHr?: string,
+    @Query('restHr') restHr?: string,
+  ) {
+    return this.activities.trainingLoad(userId, {
+      days: days ? Number(days) : undefined,
+      ftp: ftp ? Number(ftp) : undefined,
+      maxHr: maxHr ? Number(maxHr) : undefined,
+      restHr: restHr ? Number(restHr) : undefined,
+    });
+  }
+
   @Get(':id')
   get(@UserId() userId: string, @Param('id') id: string) {
     return this.activities.get(userId, id);

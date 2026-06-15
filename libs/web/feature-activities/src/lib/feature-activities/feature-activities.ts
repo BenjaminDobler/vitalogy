@@ -2,7 +2,13 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import type { Activity, AchievementsResponse } from 'data-models';
+import type {
+  Activity,
+  AchievementsResponse,
+  TrainingLoadResponse,
+} from 'data-models';
+import { AthleteSettingsService } from '../athlete-settings.service.js';
+import { TrainingLoadChartComponent } from '../training-load-chart/training-load-chart.component.js';
 
 interface PrCard {
   key: string;
@@ -17,7 +23,7 @@ interface PrCard {
 
 @Component({
   selector: 'lib-feature-activities',
-  imports: [DatePipe, DecimalPipe, RouterLink],
+  imports: [DatePipe, DecimalPipe, RouterLink, TrainingLoadChartComponent],
   template: `
     <div class="flex items-baseline justify-between mb-6">
       <h1 class="font-sora italic uppercase tracking-tighter text-3xl text-velo-lime">
@@ -30,6 +36,52 @@ interface PrCard {
         Refresh
       </button>
     </div>
+
+    @if (load(); as l) {
+      <section class="mb-8">
+        <h2 class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">
+          Training load · last {{ l.inputs.days }} days
+        </h2>
+        <div class="grid grid-cols-3 gap-3 mb-3">
+          <div class="velo-glass rounded-xl p-5 flex flex-col items-start">
+            <div class="font-grotesk text-label-caps text-on-surface-variant uppercase text-[10px]">
+              Fitness · CTL
+            </div>
+            <div class="font-sora text-2xl text-velo-lime tabular-nums leading-tight">
+              {{ l.current.ctl | number: '1.0-0' }}
+            </div>
+            <div class="text-[10px] text-on-surface-variant">42-day load</div>
+          </div>
+          <div class="velo-glass rounded-xl p-5 flex flex-col items-start">
+            <div class="font-grotesk text-label-caps text-on-surface-variant uppercase text-[10px]">
+              Fatigue · ATL
+            </div>
+            <div class="font-sora text-2xl tabular-nums leading-tight text-orange-400">
+              {{ l.current.atl | number: '1.0-0' }}
+            </div>
+            <div class="text-[10px] text-on-surface-variant">7-day load</div>
+          </div>
+          <div class="velo-glass rounded-xl p-5 flex flex-col items-start">
+            <div class="font-grotesk text-label-caps text-on-surface-variant uppercase text-[10px]">
+              Form · TSB
+            </div>
+            <div
+              class="font-sora text-2xl tabular-nums leading-tight"
+              [class.text-velo-lime]="l.current.tsb >= -5 && l.current.tsb <= 10"
+              [class.text-sky-300]="l.current.tsb > 10"
+              [class.text-orange-400]="l.current.tsb < -5 && l.current.tsb >= -20"
+              [class.text-rose-400]="l.current.tsb < -20"
+            >
+              {{ l.current.tsb > 0 ? '+' : '' }}{{ l.current.tsb | number: '1.0-0' }}
+            </div>
+            <div class="text-[10px] text-on-surface-variant">{{ formLabel(l.current.tsb) }}</div>
+          </div>
+        </div>
+        <div class="velo-glass rounded-xl p-4">
+          <lib-training-load-chart [points]="l.daily" />
+        </div>
+      </section>
+    }
 
     @if (prCards().length > 0) {
       <section class="mb-8">
@@ -102,11 +154,22 @@ interface PrCard {
 })
 export class FeatureActivities {
   private readonly http = inject(HttpClient);
+  private readonly settings = inject(AthleteSettingsService);
 
   protected readonly activities = signal<Activity[]>([]);
   protected readonly achievements = signal<AchievementsResponse | null>(null);
+  protected readonly load = signal<TrainingLoadResponse | null>(null);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
+
+  protected formLabel(tsb: number): string {
+    if (tsb > 25) return 'Detraining';
+    if (tsb > 10) return 'Rested';
+    if (tsb >= -10) return 'Neutral';
+    if (tsb >= -20) return 'Productive';
+    if (tsb >= -30) return 'Overreaching';
+    return 'High risk';
+  }
 
   /**
    * Flatten the six PR slots into UI cards with formatted values. Each
@@ -214,6 +277,18 @@ export class FeatureActivities {
       .subscribe({
         next: (r) => this.achievements.set(r),
         error: () => this.achievements.set(null),
+      });
+    const params = {
+      days: '90',
+      ftp: String(this.settings.ftp()),
+      maxHr: String(this.settings.maxHr()),
+      restHr: String(this.settings.restHr()),
+    };
+    this.http
+      .get<TrainingLoadResponse>('/api/activities/training-load', { params })
+      .subscribe({
+        next: (r) => this.load.set(r),
+        error: () => this.load.set(null),
       });
   }
 }

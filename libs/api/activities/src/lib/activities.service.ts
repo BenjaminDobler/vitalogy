@@ -6,6 +6,8 @@ import type {
   Activity,
   ActivityDetail,
   ActivityStream,
+  DailyLoadPoint,
+  TrainingLoadResponse,
   UploadActivityRequest,
   UploadActivityResponse,
   UploadSample,
@@ -258,6 +260,156 @@ export class ActivitiesService {
           : null,
     };
   }
+
+  /**
+   * Daily training load + Banister CTL/ATL/TSB EWMAs across the last N days.
+   *
+   * Per-ride load = TSS when avgWatts exists, Banister TRIMP from avgHr +
+   * HR-reserve otherwise. Days with no rides contribute 0 — both EWMAs
+   * still decay over them.
+   */
+  async trainingLoad(
+    userId: string,
+    opts: { days?: number; ftp?: number; maxHr?: number; restHr?: number } = {},
+  ): Promise<TrainingLoadResponse> {
+    const days = clampInt(opts.days ?? 90, 7, 365);
+    const ftp = clampInt(opts.ftp ?? 200, 50, 600);
+    const maxHr = clampInt(opts.maxHr ?? 190, 100, 250);
+    const restHr = clampInt(opts.restHr ?? 60, 30, 120);
+
+    // We pull a 42-day pre-roll so the CTL EWMA enters the visible window
+    // already warmed up — otherwise the first weeks look misleadingly low.
+    const preRollDays = 42;
+    const start = startOfUtcDay(new Date());
+    start.setUTCDate(start.getUTCDate() - (days + preRollDays - 1));
+
+    const rides = await this.prisma.activity.findMany({
+      where: {
+        userId,
+        startTime: { gte: start },
+      },
+      select: {
+        startTime: true,
+        durationSec: true,
+        avgWatts: true,
+        avgHeartrate: true,
+      },
+      orderBy: { startTime: 'asc' },
+    });
+
+    // Bucket rides by UTC date and sum their loads.
+    const loadByDate = new Map<string, number>();
+    for (const r of rides) {
+      const key = isoDate(r.startTime);
+      const load = computeRideLoad({
+        durationSec: r.durationSec,
+        avgWatts: r.avgWatts,
+        avgHr: r.avgHeartrate,
+        ftp,
+        maxHr,
+        restHr,
+      });
+      if (load > 0) {
+        loadByDate.set(key, (loadByDate.get(key) ?? 0) + load);
+      }
+    }
+
+    // Walk every day in [start, today] forward, running the two EWMAs.
+    const today = startOfUtcDay(new Date());
+    const series: DailyLoadPoint[] = [];
+    let ctl = 0;
+    let atl = 0;
+    const cursor = new Date(start);
+    while (cursor <= today) {
+      const key = isoDate(cursor);
+      const load = loadByDate.get(key) ?? 0;
+      ctl = ctl + (load - ctl) / 42;
+      atl = atl + (load - atl) / 7;
+      series.push({
+        date: key,
+        load: Math.round(load * 10) / 10,
+        ctl: Math.round(ctl * 10) / 10,
+        atl: Math.round(atl * 10) / 10,
+        tsb: Math.round((ctl - atl) * 10) / 10,
+      });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    // Trim the pre-roll for the wire response — only the visible window.
+    const visible = series.slice(-days);
+    const last = visible[visible.length - 1] ?? {
+      ctl: 0,
+      atl: 0,
+      tsb: 0,
+    };
+    const trend: 'building' | 'maintaining' | 'tapering' =
+      last.atl > last.ctl + 5
+        ? 'building'
+        : last.ctl > last.atl + 5
+          ? 'tapering'
+          : 'maintaining';
+
+    return {
+      daily: visible,
+      current: {
+        ctl: last.ctl,
+        atl: last.atl,
+        tsb: last.tsb,
+        trend,
+      },
+      inputs: { ftp, maxHr, restHr, days },
+    };
+  }
+}
+
+/**
+ * Per-ride load score. Prefers TSS from avgWatts (rougher than NP but
+ * the magnitude is right for trend purposes); falls back to Banister
+ * TRIMP from avgHr + HR-reserve when there's no power data.
+ */
+function computeRideLoad(args: {
+  durationSec: number;
+  avgWatts: number | null;
+  avgHr: number | null;
+  ftp: number;
+  maxHr: number;
+  restHr: number;
+}): number {
+  const { durationSec } = args;
+  if (durationSec <= 0) return 0;
+
+  if (args.avgWatts != null && args.avgWatts > 0 && args.ftp > 0) {
+    const intensity = args.avgWatts / args.ftp;
+    return (durationSec * args.avgWatts * intensity) / (args.ftp * 3600) * 100;
+  }
+  if (
+    args.avgHr != null &&
+    args.avgHr > 0 &&
+    args.maxHr > args.restHr
+  ) {
+    const hrr = Math.max(
+      0,
+      Math.min(1, (args.avgHr - args.restHr) / (args.maxHr - args.restHr)),
+    );
+    const minutes = durationSec / 60;
+    return minutes * hrr * 0.64 * Math.exp(1.92 * hrr);
+  }
+  return 0;
+}
+
+function startOfUtcDay(d: Date): Date {
+  const out = new Date(d);
+  out.setUTCHours(0, 0, 0, 0);
+  return out;
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function clampInt(v: number, lo: number, hi: number): number {
+  if (!Number.isFinite(v)) return lo;
+  return Math.max(lo, Math.min(hi, Math.round(v)));
 }
 
 
