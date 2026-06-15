@@ -3,6 +3,7 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import type {
+  AIProvider,
   Memory,
   MemoryCategory,
   UserProfile,
@@ -20,6 +21,36 @@ const CATEGORIES: CategorySpec[] = [
   { key: 'PREFERENCE', label: 'Preferences', hint: 'How you like to train', color: 'bg-sky-400/15 border-sky-400/40 text-sky-300' },
   { key: 'FACT', label: 'Facts', hint: 'Things that don\'t change often', color: 'bg-white/10 border-white/15 text-on-surface' },
   { key: 'EVENT', label: 'Events', hint: 'Races, injuries, key dates', color: 'bg-orange-400/15 border-orange-400/40 text-orange-300' },
+];
+
+interface ApiKeyView {
+  provider: AIProvider;
+  label: string | null;
+  lastFour: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ProviderSpec {
+  key: AIProvider;
+  label: string;
+  helpUrl: string;
+  placeholder: string;
+}
+
+const PROVIDERS: ProviderSpec[] = [
+  {
+    key: 'ANTHROPIC',
+    label: 'Anthropic Claude',
+    helpUrl: 'https://console.anthropic.com/account/keys',
+    placeholder: 'sk-ant-…',
+  },
+  {
+    key: 'GEMINI',
+    label: 'Google Gemini',
+    helpUrl: 'https://aistudio.google.com/apikey',
+    placeholder: 'AIza…',
+  },
 ];
 
 @Component({
@@ -147,6 +178,68 @@ const CATEGORIES: CategorySpec[] = [
         }
       </section>
 
+      <section class="mb-8">
+        <div class="flex items-baseline justify-between mb-3">
+          <h2 class="font-grotesk text-label-caps text-on-surface uppercase">AI keys</h2>
+          <span class="text-xs text-on-surface-variant">Bring your own</span>
+        </div>
+        <p class="text-sm text-on-surface-variant mb-4">
+          Your key is encrypted at rest and used only for your coach
+          conversations. Stored locally on the server; never shown again
+          after you save it. Delete any time.
+        </p>
+        <div class="space-y-3">
+          @for (prov of providers; track prov.key) {
+            @let stored = keyByProvider()[prov.key];
+            <div class="velo-glass rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="font-grotesk text-on-surface uppercase text-sm">{{ prov.label }}</div>
+                @if (stored) {
+                  <div class="text-xs text-on-surface-variant mt-0.5 tabular-nums">
+                    Connected · …{{ stored.lastFour }} · added {{ stored.createdAt | date: 'mediumDate' }}
+                  </div>
+                } @else {
+                  <a [href]="prov.helpUrl" target="_blank" rel="noopener" class="text-xs text-velo-lime hover:underline">
+                    Get a key →
+                  </a>
+                }
+              </div>
+              <div class="flex items-center gap-2">
+                <input
+                  type="password"
+                  autocomplete="off"
+                  spellcheck="false"
+                  [(ngModel)]="draftKey[prov.key]"
+                  [placeholder]="stored ? 'Replace key…' : prov.placeholder"
+                  class="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-on-surface text-sm font-mono w-48"
+                />
+                <button
+                  type="button"
+                  (click)="saveKey(prov.key)"
+                  [disabled]="!draftKey[prov.key] || savingKey() === prov.key"
+                  class="velo-shadow-lime bg-velo-lime text-velo-on-lime rounded-full px-3 py-1.5 font-grotesk text-label-caps uppercase text-xs disabled:opacity-50"
+                >
+                  {{ savingKey() === prov.key ? 'Saving…' : 'Save' }}
+                </button>
+                @if (stored) {
+                  <button
+                    type="button"
+                    (click)="deleteKey(prov.key)"
+                    class="text-on-surface-variant hover:text-rose-300"
+                    title="Forget this key"
+                  >
+                    <span class="material-symbols-outlined text-[18px]">delete</span>
+                  </button>
+                }
+              </div>
+            </div>
+          }
+        </div>
+        @if (keyError(); as e) {
+          <p class="text-xs text-rose-300 mt-2">{{ e }}</p>
+        }
+      </section>
+
       <section>
         <div class="flex items-baseline justify-between mb-3">
           <h2 class="font-grotesk text-label-caps text-on-surface uppercase">What the coach knows</h2>
@@ -208,6 +301,21 @@ export class FeatureProfile {
   protected readonly savedAt = signal<Date | null>(null);
 
   protected readonly categories = CATEGORIES;
+  protected readonly providers = PROVIDERS;
+
+  protected readonly keys = signal<ApiKeyView[]>([]);
+  protected readonly savingKey = signal<AIProvider | null>(null);
+  protected readonly keyError = signal<string | null>(null);
+  protected readonly draftKey: Record<AIProvider, string> = {
+    ANTHROPIC: '',
+    GEMINI: '',
+  };
+
+  protected readonly keyByProvider = computed(() => {
+    const out: Partial<Record<AIProvider, ApiKeyView>> = {};
+    for (const k of this.keys()) out[k.provider] = k;
+    return out;
+  });
 
   /** Group memories by category for the rendered sections. */
   protected readonly memoriesByCategory = computed(() => {
@@ -237,6 +345,46 @@ export class FeatureProfile {
   constructor() {
     this.loadProfile();
     this.loadMemories();
+    this.loadKeys();
+  }
+
+  private loadKeys(): void {
+    this.http.get<ApiKeyView[]>('/api/keys').subscribe({
+      next: (k) => this.keys.set(k),
+      error: () => this.keys.set([]),
+    });
+  }
+
+  protected saveKey(provider: AIProvider): void {
+    const apiKey = this.draftKey[provider]?.trim();
+    if (!apiKey) return;
+    this.savingKey.set(provider);
+    this.keyError.set(null);
+    this.http
+      .put<ApiKeyView>(`/api/keys/${provider}`, { apiKey })
+      .subscribe({
+        next: (k) => {
+          this.savingKey.set(null);
+          this.draftKey[provider] = '';
+          this.keys.update((arr) => [
+            ...arr.filter((x) => x.provider !== provider),
+            k,
+          ]);
+        },
+        error: (err) => {
+          this.savingKey.set(null);
+          this.keyError.set(
+            err.error?.message ?? err.message ?? 'Could not save key',
+          );
+        },
+      });
+  }
+
+  protected deleteKey(provider: AIProvider): void {
+    this.http.delete(`/api/keys/${provider}`).subscribe({
+      next: () =>
+        this.keys.update((arr) => arr.filter((k) => k.provider !== provider)),
+    });
   }
 
   protected updateField<K extends keyof UserProfile>(

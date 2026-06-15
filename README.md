@@ -82,6 +82,11 @@ import needs `STRAVA_CLIENT_ID` + `STRAVA_CLIENT_SECRET` (create an app at
 and/or `GEMINI_API_KEY` — leave both blank to fall back to the "export
 prompt" mode.
 
+The conversational coach (Profile → AI keys) lets users bring their own
+provider keys. Those keys are stored encrypted at rest, so set
+`API_KEY_ENCRYPTION_SECRET` to any long random string (`openssl rand -base64 48`
+is fine). The server refuses to save a user key if this is unset.
+
 ## Running
 
 ```bash

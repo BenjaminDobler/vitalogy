@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type Anthropic from '@anthropic-ai/sdk';
-import { AnthropicService } from 'ai';
+import { AnthropicService, KeyService } from 'ai';
 import { PrismaService } from 'db';
 import { CoachToolsService } from './coach-tools.js';
 
@@ -56,6 +56,7 @@ export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly anthropic: AnthropicService,
+    private readonly keys: KeyService,
     private readonly tools: CoachToolsService,
   ) {}
 
@@ -92,9 +93,33 @@ export class ChatService {
       data: { threadId: thread.id, role: 'USER', content },
     });
 
+    // BYOK first; env-managed key as fallback for server admins / pro tier.
+    const apiKey = await this.keys.getDecrypted(userId, 'ANTHROPIC');
+    let client: Anthropic;
+    try {
+      client = this.anthropic.client(apiKey ?? undefined);
+    } catch {
+      // No user key AND no env key — surface a clear message in-band so
+      // the chat history is self-explanatory next time the user opens it.
+      const msg =
+        "I don't have an Anthropic API key yet. Add one in Profile → AI keys to start chatting (or paste one for the server admin).";
+      await this.prisma.chatMessage.create({
+        data: {
+          threadId: thread.id,
+          role: 'ASSISTANT',
+          content: msg,
+          metadata: { warning: 'no_api_key' } as object,
+        },
+      });
+      return {
+        assistantText: msg,
+        toolCalls: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        iterations: 0,
+      };
+    }
     const history = await this.buildAnthropicHistory(thread.id);
-
-    const client = this.anthropic.client();
     const model = this.anthropic.defaultModel;
     const toolDefs = this.tools.definitions().map((t) => ({
       name: t.name,
