@@ -407,6 +407,9 @@ function toDto(a: {
   weatherCode: number | null;
   weatherSource: string | null;
   weatherObservedAt: Date | null;
+  stravaExportId: string | null;
+  stravaActivityId: string | null;
+  stravaExportedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }): Activity {
@@ -415,6 +418,7 @@ function toDto(a: {
     source: a.source as Activity['source'],
     startTime: a.startTime.toISOString(),
     weatherObservedAt: a.weatherObservedAt ? a.weatherObservedAt.toISOString() : null,
+    stravaExportedAt: a.stravaExportedAt ? a.stravaExportedAt.toISOString() : null,
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),
   };

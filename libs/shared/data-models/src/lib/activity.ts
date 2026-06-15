@@ -53,6 +53,11 @@ export interface Activity {
   weatherCode?: number | null;
   weatherSource?: string | null;
   weatherObservedAt?: string | null;
+  // Strava export tracking. Set after a non-STRAVA activity has been
+  // pushed up via POST /api/strava/export/:id.
+  stravaExportId?: string | null;
+  stravaActivityId?: string | null;
+  stravaExportedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

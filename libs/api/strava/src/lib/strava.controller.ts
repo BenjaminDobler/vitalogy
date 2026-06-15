@@ -94,4 +94,17 @@ export class StravaImportController {
       max: max ? Number(max) : undefined,
     });
   }
+
+  /**
+   * Push a locally-stored activity (manual / FIT / TCX / GPX) up to Strava.
+   * No-op if the activity has already been exported. Refuses STRAVA-source
+   * activities (would create a duplicate of what we imported).
+   */
+  @Post('export/:activityId')
+  async exportToStrava(
+    @UserId() userId: string,
+    @Param('activityId') activityId: string,
+  ) {
+    return this.strava.exportToStrava(userId, activityId);
+  }
 }

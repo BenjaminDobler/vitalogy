@@ -104,6 +104,14 @@ model Activity {
 
   raw             Json?         // full source payload for re-processing later
 
+  // Strava export tracking. When a MANUAL / FIT / TCX / GPX activity is
+  // pushed to Strava via POST /uploads, we store the resulting upload id,
+  // the final strava activity id, and a timestamp. Re-export is a no-op
+  // once stravaActivityId is set.
+  stravaExportId      String?
+  stravaActivityId    String?
+  stravaExportedAt    DateTime?
+
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

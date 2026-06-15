@@ -70,14 +70,41 @@ const CHART_SPECS: ChartSpec[] = [
       <p class="text-rose-300">{{ error() }}</p>
     } @else if (activity(); as a) {
       <header class="mb-6">
-        <h1 class="font-sora text-3xl font-bold tracking-tight text-on-surface">{{ a.name }}</h1>
-        <p class="text-sm text-on-surface-variant">
-          {{ a.startTime | date: 'fullDate' }} · {{ a.startTime | date: 'shortTime' }}
-          · {{ a.sportType }}
-          @if (a.trainerActivity) {
-            · <span class="text-on-surface-variant">indoor</span>
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <h1 class="font-sora text-3xl font-bold tracking-tight text-on-surface">{{ a.name }}</h1>
+            <p class="text-sm text-on-surface-variant">
+              {{ a.startTime | date: 'fullDate' }} · {{ a.startTime | date: 'shortTime' }}
+              · {{ a.sportType }}
+              @if (a.trainerActivity) {
+                · <span class="text-on-surface-variant">indoor</span>
+              }
+            </p>
+          </div>
+          @if (canExportToStrava(a)) {
+            <button
+              type="button"
+              (click)="exportToStrava()"
+              [disabled]="exporting()"
+              class="shrink-0 px-3 py-1.5 rounded-md bg-[#fc4c02] hover:bg-[#e44402] text-white text-xs font-grotesk uppercase tracking-wider disabled:opacity-50"
+            >
+              {{ exporting() ? 'Pushing…' : 'Push to Strava' }}
+            </button>
+          } @else if (a.stravaActivityId) {
+            <a
+              [href]="'https://www.strava.com/activities/' + a.stravaActivityId"
+              target="_blank"
+              rel="noopener"
+              class="shrink-0 px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-on-surface text-xs font-grotesk uppercase tracking-wider"
+              title="Open on Strava"
+            >
+              On Strava ↗
+            </a>
           }
-        </p>
+        </div>
+        @if (exportError(); as e) {
+          <p class="mt-2 text-xs text-rose-300">{{ e }}</p>
+        }
         @if (hasWeather()) {
           <p class="mt-2 text-sm flex flex-wrap items-center gap-x-3 gap-y-1 tabular-nums">
             <span>
@@ -272,6 +299,17 @@ export class ActivityDetailComponent {
   protected readonly importStatus = signal<string | null>(null);
   protected readonly error = signal<string | null>(null);
 
+  protected readonly exporting = signal(false);
+  protected readonly exportError = signal<string | null>(null);
+
+  /**
+   * STRAVA-source activities can't be re-exported (would duplicate),
+   * and already-exported activities show the "On Strava" link instead.
+   */
+  protected canExportToStrava(a: ActivityDetail): boolean {
+    return a.source !== 'STRAVA' && !a.stravaActivityId;
+  }
+
   /** Coordinates for the route map, or null if this is an indoor / no-GPS ride. */
   protected readonly routeCoords = computed(() => {
     const streams = this.activity()?.streams ?? [];
@@ -382,6 +420,38 @@ export class ActivityDetailComponent {
     this.error.set(err.error?.message ?? err.message ?? 'Request failed');
     this.loading.set(false);
     this.importStatus.set(null);
+  }
+
+  protected exportToStrava(): void {
+    const a = this.activity();
+    if (!a || !this.canExportToStrava(a)) return;
+    this.exporting.set(true);
+    this.exportError.set(null);
+    this.http
+      .post<{ stravaActivityId: string; stravaUrl: string; cached: boolean }>(
+        `/api/strava/export/${a.id}`,
+        {},
+      )
+      .subscribe({
+        next: (r) => {
+          this.exporting.set(false);
+          this.activity.update((cur) =>
+            cur
+              ? {
+                  ...cur,
+                  stravaActivityId: r.stravaActivityId,
+                  stravaExportedAt: new Date().toISOString(),
+                }
+              : cur,
+          );
+        },
+        error: (err) => {
+          this.exporting.set(false);
+          this.exportError.set(
+            err.error?.message ?? err.message ?? 'Export failed',
+          );
+        },
+      });
   }
 
   protected formatDuration(seconds: number): string {

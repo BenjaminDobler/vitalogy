@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from 'db';
 import type { StravaSummaryActivity } from 'data-models';
+import { buildTcx, type TcxBuildInput } from './tcx.js';
 
 const STRAVA_OAUTH_BASE = 'https://www.strava.com/oauth';
 export const STRAVA_API_BASE = 'https://www.strava.com/api/v3';
-const DEFAULT_SCOPE = 'read,activity:read_all,profile:read_all';
+const DEFAULT_SCOPE = 'read,activity:read_all,activity:write,profile:read_all';
 
 @Injectable()
 export class StravaService {
@@ -295,6 +296,145 @@ export class StravaService {
     };
   }
 
+  /**
+   * Push a locally-stored activity (manual / FIT / TCX / GPX) up to Strava
+   * by generating a TCX file and POSTing it to /uploads. Polls the upload
+   * status until the activity is processed (or fails), then persists the
+   * resulting Strava activity id so we don't double-export.
+   */
+  async exportToStrava(
+    userId: string,
+    activityId: string,
+  ): Promise<{
+    stravaActivityId: string;
+    stravaUrl: string;
+    cached: boolean;
+  }> {
+    const activity = await this.prisma.activity.findFirst({
+      where: { id: activityId, userId },
+      include: { streams: true, laps: true },
+    });
+    if (!activity) {
+      throw new NotFoundException(`Activity not found: ${activityId}`);
+    }
+    if (activity.source === 'STRAVA') {
+      throw new BadRequestException(
+        'This activity was imported FROM Strava — exporting would create a duplicate.',
+      );
+    }
+    if (activity.stravaActivityId) {
+      return {
+        stravaActivityId: activity.stravaActivityId,
+        stravaUrl: `https://www.strava.com/activities/${activity.stravaActivityId}`,
+        cached: true,
+      };
+    }
+
+    const account = await this.prisma.stravaAccount.findUnique({ where: { userId } });
+    if (!account) {
+      throw new BadRequestException(
+        'No Strava account connected. Visit /api/auth/strava/start first.',
+      );
+    }
+    if (!account.scope.includes('activity:write')) {
+      throw new BadRequestException(
+        'Strava connection is missing activity:write scope. Reconnect at /api/auth/strava/start.',
+      );
+    }
+
+    const tcx = buildTcx(activityToTcxInput(activity));
+    const accessToken = await this.ensureFreshToken(account);
+
+    const uploadId = await this.postUpload(accessToken, tcx, activity.name);
+
+    // Mark in-flight so a retry knows we already pushed bytes.
+    await this.prisma.activity.update({
+      where: { id: activityId },
+      data: { stravaExportId: uploadId },
+    });
+
+    const stravaActivityId = await this.pollUpload(accessToken, uploadId);
+
+    await this.prisma.activity.update({
+      where: { id: activityId },
+      data: {
+        stravaActivityId,
+        stravaExportedAt: new Date(),
+      },
+    });
+
+    return {
+      stravaActivityId,
+      stravaUrl: `https://www.strava.com/activities/${stravaActivityId}`,
+      cached: false,
+    };
+  }
+
+  /** POST the TCX as multipart/form-data and return Strava's upload id. */
+  private async postUpload(
+    accessToken: string,
+    tcx: string,
+    name: string,
+  ): Promise<string> {
+    const form = new FormData();
+    form.append('data_type', 'tcx');
+    form.append('name', name);
+    form.append(
+      'file',
+      new Blob([tcx], { type: 'application/xml' }),
+      'vitalogy.tcx',
+    );
+    const res = await fetch(`${STRAVA_API_BASE}/uploads`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form,
+    });
+    if (!res.ok) {
+      throw new Error(`Strava upload failed: ${res.status} ${await res.text()}`);
+    }
+    const data = (await res.json()) as {
+      id: number;
+      id_str: string;
+      error?: string | null;
+    };
+    if (data.error) {
+      throw new Error(`Strava upload rejected: ${data.error}`);
+    }
+    return data.id_str || String(data.id);
+  }
+
+  /**
+   * Poll Strava's /uploads/:id endpoint until the activity is processed.
+   * Strava's docs say processing usually completes in a few seconds; we
+   * poll every 2s up to 30s before giving up.
+   */
+  private async pollUpload(accessToken: string, uploadId: string): Promise<string> {
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2_000));
+      const res = await fetch(`${STRAVA_API_BASE}/uploads/${uploadId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        throw new Error(`Strava upload status failed: ${res.status} ${await res.text()}`);
+      }
+      const data = (await res.json()) as {
+        id_str: string;
+        activity_id: number | null;
+        error: string | null;
+        status: string;
+      };
+      if (data.error) {
+        throw new Error(`Strava upload error: ${data.error}`);
+      }
+      if (data.activity_id) {
+        return String(data.activity_id);
+      }
+      // status === 'Your activity is still being processed.' — keep polling.
+    }
+    throw new Error('Strava upload timed out after 30s. Check Strava manually.');
+  }
+
   private async fetchDetail(accessToken: string, sourceId: string): Promise<StravaDetailedActivity> {
     const res = await fetch(
       `${STRAVA_API_BASE}/activities/${sourceId}?include_all_efforts=false`,
@@ -402,6 +542,76 @@ export class StravaService {
     if (!v) throw new Error(`Missing config: ${key}`);
     return v;
   }
+}
+
+/**
+ * Maps a Prisma Activity (with streams + laps included) to the shape the
+ * TCX builder expects. Streams are stored as JSON keyed by `type`; we
+ * pick out the ones TCX cares about.
+ */
+function activityToTcxInput(
+  activity: {
+    name: string;
+    sportType: string;
+    startTime: Date;
+    durationSec: number;
+    distanceM: number;
+    maxSpeedMps: number | null;
+    avgHeartrate: number | null;
+    maxHeartrate: number | null;
+    kilojoules: number | null;
+    streams: { type: string; data: unknown }[];
+    laps: {
+      lapIndex: number;
+      startTime: Date;
+      durationSec: number;
+      distanceM: number;
+      avgHeartrate: number | null;
+      avgSpeedMps: number | null;
+    }[];
+  },
+): TcxBuildInput {
+  const byType = new Map<string, unknown>();
+  for (const s of activity.streams) byType.set(s.type, s.data);
+
+  const asNums = (key: string): number[] | undefined => {
+    const v = byType.get(key);
+    return Array.isArray(v) ? (v as number[]) : undefined;
+  };
+  const latlng = byType.get('latlng');
+  const latlngArr =
+    Array.isArray(latlng)
+      ? (latlng as ([number, number] | null)[])
+      : undefined;
+
+  return {
+    startTime: activity.startTime,
+    sportType: activity.sportType,
+    durationSec: activity.durationSec,
+    distanceM: activity.distanceM,
+    maxSpeedMps: activity.maxSpeedMps,
+    avgHeartrate: activity.avgHeartrate,
+    maxHeartrate: activity.maxHeartrate,
+    kilojoules: activity.kilojoules,
+    streams: {
+      time: asNums('time'),
+      latlng: latlngArr,
+      altitude: asNums('altitude'),
+      distance: asNums('distance'),
+      heartrate: asNums('heartrate'),
+      cadence: asNums('cadence'),
+      velocity_smooth: asNums('velocity_smooth'),
+      watts: asNums('watts'),
+    },
+    laps: activity.laps.map((l) => ({
+      lapIndex: l.lapIndex,
+      startTime: l.startTime,
+      durationSec: l.durationSec,
+      distanceM: l.distanceM,
+      avgHeartrate: l.avgHeartrate,
+      avgSpeedMps: l.avgSpeedMps,
+    })),
+  };
 }
 
 interface StravaLap {
