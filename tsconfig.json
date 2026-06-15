@@ -83,6 +83,9 @@
     },
     {
       "path": "./libs/shared/training-metrics"
+    },
+    {
+      "path": "./libs/web/feature-coach"
     }
   ]
 }

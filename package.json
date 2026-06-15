@@ -103,6 +103,7 @@
     "@prisma/client": "^6.19.3",
     "axios": "^1.6.0",
     "leaflet": "^1.9.4",
+    "marked": "^18.0.5",
     "reflect-metadata": "^0.1.13",
     "rxjs": "~7.8.0"
   }

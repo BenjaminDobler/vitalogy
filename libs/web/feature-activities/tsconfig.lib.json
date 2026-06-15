@@ -19,6 +19,9 @@
     },
     {
       "path": "../ui/tsconfig.lib.json"
+    },
+    {
+      "path": "../feature-coach/tsconfig.lib.json"
     }
   ]
 }

@@ -7,6 +7,7 @@ import type {
   AchievementsResponse,
   TrainingLoadResponse,
 } from 'data-models';
+import { ChatPanelComponent } from 'feature-coach';
 import { AthleteSettingsService } from '../athlete-settings.service.js';
 import { TrainingLoadChartComponent } from '../training-load-chart/training-load-chart.component.js';
 import { recommendWorkout } from '../workout-recommendation.js';
@@ -24,7 +25,13 @@ interface PrCard {
 
 @Component({
   selector: 'lib-feature-activities',
-  imports: [DatePipe, DecimalPipe, RouterLink, TrainingLoadChartComponent],
+  imports: [
+    DatePipe,
+    DecimalPipe,
+    RouterLink,
+    TrainingLoadChartComponent,
+    ChatPanelComponent,
+  ],
   template: `
     <div class="flex items-baseline justify-between mb-6">
       <h1 class="font-sora italic uppercase tracking-tighter text-3xl text-velo-lime">
@@ -37,6 +44,10 @@ interface PrCard {
         Refresh
       </button>
     </div>
+
+    <section class="mb-8">
+      <lib-chat-panel />
+    </section>
 
     @if (load(); as l) {
       @if (recommendation(); as r) {
