@@ -1,5 +1,11 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { BleManager, BleReading, CscReading, HrmReading } from 'ble';
+import {
+  BleManager,
+  BleReading,
+  CscReading,
+  HrmReading,
+  PowerReading,
+} from 'ble';
 import { ConfigService } from 'api-client';
 import { Subscription } from 'rxjs';
 import {
@@ -47,6 +53,15 @@ export class RecordingService {
   /** Auto-pause: timestamp (ms) when speed first dropped below threshold. */
   private slowSinceMs?: number;
 
+  /**
+   * GPS speed/distance fallback. When no CSC sensor has fired in this
+   * session, successive GPS samples become the speed + distance source.
+   * Tracks the previous fix and a session-cumulative distance.
+   */
+  private sessionHasCsc = false;
+  private gpsPrev?: { lat: number; lng: number; t: number };
+  private gpsDistanceM = 0;
+
   start(): RecordingSession {
     if (this.session()) {
       throw new Error('Recording already in progress');
@@ -64,6 +79,9 @@ export class RecordingService {
     this.latest.set(null);
     this.paused.set(false);
     this.slowSinceMs = undefined;
+    this.sessionHasCsc = false;
+    this.gpsPrev = undefined;
+    this.gpsDistanceM = 0;
     this.partial = {};
     this.lastFlushT = 0;
 
@@ -160,6 +178,30 @@ export class RecordingService {
     this.partial.lat = lat;
     this.partial.lng = lng;
     if (altitudeM != null) this.partial.altitudeM = altitudeM;
+
+    // GPS-derived speed + distance. Always integrate (cheap), but only
+    // promote to partial.speedMps/distanceM when no CSC sensor has ever
+    // fired in this session — otherwise the wheel sensor wins.
+    const now = Date.now();
+    if (this.gpsPrev) {
+      const dtSec = (now - this.gpsPrev.t) / 1000;
+      // Skip tiny intervals (sub-300ms — noise dominates) and big gaps
+      // (suspended app, lost fix — would yield bogus speed spikes).
+      if (dtSec >= 0.3 && dtSec <= 30) {
+        const distM = haversineM(this.gpsPrev.lat, this.gpsPrev.lng, lat, lng);
+        const speed = distM / dtSec;
+        // Sanity guard: GPS occasionally jumps 100+ m on a bad fix. Cap
+        // at 50 m/s = 180 km/h which is way above any realistic cyclist.
+        if (speed < 50) {
+          this.gpsDistanceM += distM;
+          if (!this.sessionHasCsc) {
+            this.partial.speedMps = speed;
+            this.partial.distanceM = this.gpsDistanceM;
+          }
+        }
+      }
+    }
+    this.gpsPrev = { lat, lng, t: now };
   }
 
   /** Stamp the latest weather snapshot onto the session. */
@@ -305,9 +347,22 @@ export class RecordingService {
     } else if (r.kind === 'CSC') {
       const csc = r.data as CscReading;
       if (csc.cadenceRpm != null) this.partial.cadenceRpm = csc.cadenceRpm;
-      if (csc.speedMps != null) this.partial.speedMps = csc.speedMps;
+      if (csc.speedMps != null) {
+        this.partial.speedMps = csc.speedMps;
+        this.sessionHasCsc = true;
+      }
       if (csc.cumulativeDistanceM != null) {
         this.partial.distanceM = csc.cumulativeDistanceM;
+        this.sessionHasCsc = true;
+      }
+    } else if (r.kind === 'POWER') {
+      const p = r.data as PowerReading;
+      this.partial.watts = p.watts;
+      // Power meters with crank revs double as a cadence source. Only fill
+      // if a CSC sensor hasn't already provided cadence (CSC tends to be
+      // more accurate when both are present).
+      if (p.cadenceRpm != null && this.partial.cadenceRpm == null) {
+        this.partial.cadenceRpm = p.cadenceRpm;
       }
     }
     const startedAt = this.session()!.startedAt;
@@ -368,6 +423,9 @@ function computeLapStats(
   let sumCadence = 0;
   let countCadence = 0;
   let maxSpeed = 0;
+  let sumWatts = 0;
+  let countWatts = 0;
+  let maxWatts = 0;
 
   for (const s of samples) {
     if (s.hr != null) {
@@ -380,6 +438,11 @@ function computeLapStats(
       countCadence++;
     }
     if (s.speedMps != null && s.speedMps > maxSpeed) maxSpeed = s.speedMps;
+    if (s.watts != null) {
+      sumWatts += s.watts;
+      countWatts++;
+      if (s.watts > maxWatts) maxWatts = s.watts;
+    }
   }
 
   const lapDistance = windowDistance(samples, lapStartMs, lapEndMs);
@@ -394,6 +457,8 @@ function computeLapStats(
     avgSpeedMps:
       lapDistance > 0 && durationSec > 0 ? lapDistance / durationSec : undefined,
     maxSpeedMps: maxSpeed > 0 ? maxSpeed : undefined,
+    avgWatts: countWatts > 0 ? sumWatts / countWatts : undefined,
+    maxWatts: countWatts > 0 ? maxWatts : undefined,
   };
 }
 
@@ -450,6 +515,9 @@ function computeStats(
   let sumCadence = 0;
   let countCadence = 0;
   let maxSpeed = 0;
+  let sumWatts = 0;
+  let countWatts = 0;
+  let maxWatts = 0;
   for (const s of samples) {
     if (s.hr != null) {
       sumHr += s.hr;
@@ -462,6 +530,11 @@ function computeStats(
     }
     if (s.speedMps != null && s.speedMps > maxSpeed) {
       maxSpeed = s.speedMps;
+    }
+    if (s.watts != null) {
+      sumWatts += s.watts;
+      countWatts++;
+      if (s.watts > maxWatts) maxWatts = s.watts;
     }
   }
   const sessionDistance = windowDistance(samples, 0, elapsedMs);
@@ -477,5 +550,22 @@ function computeStats(
         ? sessionDistance / movingSec
         : undefined,
     maxSpeedMps: maxSpeed > 0 ? maxSpeed : undefined,
+    avgWatts: countWatts > 0 ? sumWatts / countWatts : undefined,
+    maxWatts: countWatts > 0 ? maxWatts : undefined,
   };
+}
+
+/**
+ * Great-circle distance between two lat/lng points in meters. Used for
+ * GPS-only speed fallback when no wheel sensor is paired.
+ */
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

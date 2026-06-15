@@ -74,10 +74,13 @@ export class ActivitiesService {
         elevationGainM: stats.elevationGainM,
         avgSpeedMps: stats.avgSpeedMps,
         maxSpeedMps: stats.maxSpeedMps,
-        avgWatts: null,
+        avgWatts: stats.avgWatts,
         weightedAvgWatts: null,
-        maxWatts: null,
-        kilojoules: null,
+        maxWatts: stats.maxWatts != null ? Math.round(stats.maxWatts) : null,
+        kilojoules:
+          stats.avgWatts != null && stats.movingSec > 0
+            ? Math.round((stats.avgWatts * stats.movingSec) / 1000)
+            : null,
         avgHeartrate: stats.avgHr,
         maxHeartrate: stats.maxHr,
         avgCadence: stats.avgCadence,
@@ -425,6 +428,8 @@ interface RecordingStats {
   avgHr: number | null;
   maxHr: number | null;
   avgCadence: number | null;
+  avgWatts: number | null;
+  maxWatts: number | null;
 }
 
 function summarize(
@@ -450,6 +455,9 @@ function summarize(
   let sumCadence = 0,
     countCadence = 0;
   let maxSpeed = 0;
+  let sumWatts = 0,
+    countWatts = 0,
+    maxWatts = 0;
   let elevGain = 0;
   let prevAlt: number | null = null;
 
@@ -464,6 +472,11 @@ function summarize(
       countCadence++;
     }
     if (s.speedMps != null && s.speedMps > maxSpeed) maxSpeed = s.speedMps;
+    if (s.watts != null) {
+      sumWatts += s.watts;
+      countWatts++;
+      if (s.watts > maxWatts) maxWatts = s.watts;
+    }
     if (s.altitudeM != null) {
       if (prevAlt != null && s.altitudeM > prevAlt) {
         elevGain += s.altitudeM - prevAlt;
@@ -492,6 +505,8 @@ function summarize(
     avgHr: countHr > 0 ? sumHr / countHr : null,
     maxHr: countHr > 0 ? maxHr : null,
     avgCadence: countCadence > 0 ? sumCadence / countCadence : null,
+    avgWatts: countWatts > 0 ? sumWatts / countWatts : null,
+    maxWatts: countWatts > 0 ? maxWatts : null,
   };
 }
 
@@ -515,6 +530,7 @@ function buildStreams(
   const hr = samples.map((s) => s.hr ?? null);
   const cadence = samples.map((s) => s.cadenceRpm ?? null);
   const speed = samples.map((s) => s.speedMps ?? null);
+  const watts = samples.map((s) => s.watts ?? null);
   // Rebase cumulative-from-sensor distance to cumulative-from-session-start
   // so the stream + downstream consumers (charts, TCX export, etc.) see
   // 0 at t=0 instead of whatever the sensor had counted before recording.
@@ -531,6 +547,7 @@ function buildStreams(
     ...(hasValue(hr) ? [{ type: 'heartrate', data: hr }] : []),
     ...(hasValue(cadence) ? [{ type: 'cadence', data: cadence }] : []),
     ...(hasValue(speed) ? [{ type: 'velocity_smooth', data: speed }] : []),
+    ...(hasValue(watts) ? [{ type: 'watts', data: watts }] : []),
     ...(hasValue(distance) ? [{ type: 'distance', data: distance }] : []),
     ...(hasValue(altitude) ? [{ type: 'altitude', data: altitude }] : []),
     ...(hasValue(latlng) ? [{ type: 'latlng', data: latlng }] : []),

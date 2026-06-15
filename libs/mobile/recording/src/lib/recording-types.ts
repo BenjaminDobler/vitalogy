@@ -6,10 +6,17 @@ export interface RecordingSample {
   hr?: number;
   /** Cadence (rpm). */
   cadenceRpm?: number;
-  /** Instantaneous speed (m/s). */
+  /** Instantaneous speed (m/s). May be GPS-derived when no wheel sensor. */
   speedMps?: number;
-  /** Cumulative distance from CSC tracker (m). */
+  /**
+   * Cumulative distance (m). When a CSC sensor is paired this is the
+   * sensor's cumulative-since-power-on reading. When GPS is the only
+   * speed source, this is the session-cumulative computed from successive
+   * GPS samples.
+   */
   distanceM?: number;
+  /** Instantaneous power (watts), when a power meter is paired. */
+  watts?: number;
   /** GPS latitude (degrees). */
   lat?: number;
   /** GPS longitude (degrees). */
@@ -58,4 +65,8 @@ export interface LiveStats {
   avgSpeedMps?: number;
   /** Max speed observed. */
   maxSpeedMps?: number;
+  /** Average power (watts) over samples where it was non-null. */
+  avgWatts?: number;
+  /** Max power observed. */
+  maxWatts?: number;
 }

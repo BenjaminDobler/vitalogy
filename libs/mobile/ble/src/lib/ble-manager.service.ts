@@ -5,6 +5,12 @@ import { BATTERY_ADAPTER, BatteryReading } from './battery-adapter';
 import { CSC_ADAPTER, CscRaw, CscReading, CscTracker } from './csc-adapter';
 import { HRM_ADAPTER, HrmReading } from './hrm-adapter';
 import {
+  POWER_ADAPTER,
+  PowerRaw,
+  PowerReading,
+  PowerTracker,
+} from './power-adapter';
+import {
   BleReading,
   SensorAdapter,
   SensorKind,
@@ -26,11 +32,14 @@ export interface ConnectedSensor {
   subscribed: SensorKind[];
   /** CSC stateful tracker, lazily created when the first CSC packet arrives. */
   cscTracker?: CscTracker;
+  /** Power stateful tracker, lazily created when the first POWER packet arrives. */
+  powerTracker?: PowerTracker;
 }
 
 const ALL_ADAPTERS: SensorAdapter<unknown>[] = [
   HRM_ADAPTER as SensorAdapter<unknown>,
   CSC_ADAPTER as SensorAdapter<unknown>,
+  POWER_ADAPTER as SensorAdapter<unknown>,
   BATTERY_ADAPTER as SensorAdapter<unknown>,
 ];
 
@@ -177,6 +186,24 @@ export class BleManager {
         receivedAt,
         data: parsed as HrmReading,
       });
+      return;
+    }
+
+    // POWER needs cross-packet state (only) when crank-rev data is present.
+    if (kind === 'POWER') {
+      let tracker: PowerTracker | undefined;
+      this.connected.update((list) =>
+        list.map((c) => {
+          if (c.deviceId !== deviceId) return c;
+          if (!c.powerTracker) c.powerTracker = new PowerTracker();
+          tracker = c.powerTracker;
+          return c;
+        }),
+      );
+      const reading: PowerReading = tracker
+        ? tracker.update(parsed as PowerRaw)
+        : { watts: (parsed as PowerRaw).watts };
+      this.readings$.next({ kind, deviceId, receivedAt, data: reading });
       return;
     }
 

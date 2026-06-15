@@ -40,6 +40,8 @@ export interface UploadSample {
   speedMps?: number;
   /** Cumulative distance in meters. */
   distanceM?: number;
+  /** Instantaneous power (watts), when a power meter is paired. */
+  watts?: number;
   lat?: number;
   lng?: number;
   altitudeM?: number;
