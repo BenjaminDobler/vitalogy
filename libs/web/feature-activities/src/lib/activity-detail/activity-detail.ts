@@ -1,5 +1,6 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { RouteMapComponent, StreamChartComponent } from 'ui';
@@ -10,6 +11,17 @@ import {
   type ActivityStream,
   type StreamType,
 } from 'data-models';
+import { FtpService } from '../ftp.service.js';
+import { PowerCurveChartComponent } from '../power-curve-chart/power-curve-chart.component.js';
+import {
+  autoFtp,
+  intensityFactor,
+  normalizedPower,
+  powerCurve,
+  POWER_CURVE_DURATIONS,
+  totalKilojoules,
+  tss,
+} from '../training-metrics.js';
 
 interface ImportResult {
   streams: number;
@@ -47,9 +59,11 @@ const CHART_SPECS: ChartSpec[] = [
   imports: [
     DatePipe,
     DecimalPipe,
+    FormsModule,
     RouterLink,
     StreamChartComponent,
     RouteMapComponent,
+    PowerCurveChartComponent,
   ],
   template: `
     <div class="mb-4">
@@ -207,6 +221,80 @@ const CHART_SPECS: ChartSpec[] = [
         </div>
       </section>
 
+      @if (hasPowerStream()) {
+        <section class="mb-8">
+          <div class="flex items-baseline justify-between mb-3 flex-wrap gap-2">
+            <h2 class="font-grotesk text-label-caps text-on-surface uppercase">Performance</h2>
+            <label class="text-xs text-on-surface-variant flex items-center gap-2">
+              FTP
+              <input
+                type="number"
+                min="50"
+                max="600"
+                step="5"
+                [ngModel]="ftp()"
+                (ngModelChange)="setFtp($event)"
+                class="bg-white/5 border border-white/10 rounded px-2 py-0.5 w-20 text-on-surface tabular-nums text-right text-xs"
+              />
+              <span class="text-on-surface-variant">W</span>
+              @if (autoFtpEstimate(); as auto) {
+                <button
+                  type="button"
+                  (click)="setFtp(auto)"
+                  class="text-velo-lime hover:underline"
+                  title="Use 95% of best 20-min power"
+                >
+                  set to {{ auto | number: '1.0-0' }}
+                </button>
+              }
+            </label>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+              <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Normalized power</div>
+              <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+                @if (np(); as v) {
+                  {{ v | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">W</span>
+                } @else {
+                  <span class="text-on-surface-variant text-base">—</span>
+                }
+              </div>
+            </div>
+            <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+              <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Intensity factor</div>
+              <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+                @if (intensity(); as v) {
+                  {{ v | number: '1.2-2' }}
+                } @else {
+                  <span class="text-on-surface-variant text-base">—</span>
+                }
+              </div>
+            </div>
+            <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+              <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Training stress</div>
+              <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+                @if (trainingStress(); as v) {
+                  {{ v | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">TSS</span>
+                } @else {
+                  <span class="text-on-surface-variant text-base">—</span>
+                }
+              </div>
+            </div>
+            <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+              <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Work</div>
+              <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+                @if (derivedKj(); as v) {
+                  {{ v | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">kJ</span>
+                } @else {
+                  <span class="text-on-surface-variant text-base">—</span>
+                }
+              </div>
+            </div>
+          </div>
+          <lib-power-curve-chart [points]="powerCurvePoints()" />
+        </section>
+      }
+
       @if (routeCoords(); as coords) {
         <section class="mb-8">
           <h2 class="font-grotesk text-label-caps text-on-surface uppercase mb-3">Route</h2>
@@ -290,9 +378,15 @@ const CHART_SPECS: ChartSpec[] = [
 })
 export class ActivityDetailComponent {
   private readonly http = inject(HttpClient);
+  private readonly ftpService = inject(FtpService);
 
   // Router input binding (provideRouter is configured with withComponentInputBinding()).
   readonly id = input.required<string>();
+
+  protected readonly ftp = this.ftpService.ftp;
+  protected setFtp(v: number): void {
+    if (Number.isFinite(v) && v > 0) this.ftpService.set(v);
+  }
 
   protected readonly activity = signal<ActivityDetail | null>(null);
   protected readonly loading = signal(true);
@@ -336,6 +430,34 @@ export class ActivityDetailComponent {
     const first = this.activity()?.streams[0];
     return Array.isArray(first?.data) ? first!.data.length : 0;
   });
+
+  /** Raw watts stream as a number[] (or empty if absent / non-numeric). */
+  private readonly wattsStream = computed<number[]>(() => {
+    const streams = this.activity()?.streams ?? [];
+    const w = streams.find((s) => s.type === 'watts');
+    if (!w || !Array.isArray(w.data) || typeof w.data[0] !== 'number') return [];
+    return w.data as number[];
+  });
+
+  protected readonly hasPowerStream = computed(() => this.wattsStream().length > 0);
+
+  protected readonly np = computed(() => normalizedPower(this.wattsStream()));
+  protected readonly autoFtpEstimate = computed(() => {
+    const a = autoFtp(this.wattsStream());
+    return a != null ? Math.round(a) : null;
+  });
+  protected readonly intensity = computed(() =>
+    intensityFactor(this.np(), this.ftp()),
+  );
+  protected readonly trainingStress = computed(() => {
+    const a = this.activity();
+    if (!a) return null;
+    return tss(a.durationSec, this.np(), this.ftp());
+  });
+  protected readonly derivedKj = computed(() => totalKilojoules(this.wattsStream()));
+  protected readonly powerCurvePoints = computed(() =>
+    powerCurve(this.wattsStream(), [...POWER_CURVE_DURATIONS]),
+  );
 
   protected readonly hasWeather = computed(() => {
     const a = this.activity();
