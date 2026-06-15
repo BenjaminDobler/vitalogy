@@ -1,44 +1,62 @@
 # Vitalogy
 
-> Cycling-first training analytics — Strava import + per-activity detail (laps, streams, GPS map) + AI-assisted analysis (Anthropic Claude, Google Gemini).
+> Cycling-first training analytics — Strava import + first-party BLE sensor
+> recording on iOS / Android + per-activity detail (laps, streams, GPS map,
+> weather) + AI-assisted analysis (Anthropic Claude, Google Gemini).
 
+Visual design follows the **VeloPulse** system: obsidian carbon-fiber surfaces,
+electric-lime hero accents, Sora for metrics, Space Grotesk for tracked caps,
+Inter for body. Glassmorphism cards throughout.
 
-
-A personal cycling-analytics workspace. Import rides (Strava today, first-party
-recording later), explore the data in a modern Angular UI, and run AI-powered
-analyses via Anthropic Claude and Google Gemini.
-
-Set up as an [Nx](https://nx.dev) monorepo so additional apps and tools can be
-added alongside the initial web + API.
+Set up as an [Nx](https://nx.dev) monorepo. Four apps share a single
+TypeScript codebase and design system.
 
 ## Structure
 
 ```
 apps/
-  web/              Angular 21 SPA (Tailwind + Angular CDK + Leaflet)
-  api/              NestJS 11 backend
-  mobile/           Angular 21 + Capacitor (iOS / Android), BLE sensor recorder
+  web/              Angular 21 SPA — Activities list, detail page (map,
+                    charts, laps, weather), Strava import, AI analysis
+  api/              NestJS 11 backend (user-id middleware, activities CRUD,
+                    Strava OAuth + import, AI provider proxy)
+  mobile/           Angular 21 + Capacitor (iOS / Android) — BLE sensor
+                    recorder with live tiles, lap-marking, auto-pause,
+                    GPS + weather + uploads
+  simulator/        Desktop dev app — wraps the mobile record screen with
+                    synthetic + replay drivers so you can iterate on UI
+                    without deploying to the phone
   web-e2e/          Playwright tests for web
   api-e2e/          Jest e2e tests for api
+
 libs/
   shared/
-    data-models/    Plain-TS interfaces shared across apps
+    data-models/    Plain-TS interfaces shared across all apps
   api/
+    auth/           UserIdMiddleware + @UserId decorator (tier-1 tenancy)
     db/             PrismaService + DbModule (Postgres)
-    strava/         Strava OAuth + import + per-activity detail import
-    ai/             Anthropic + Gemini services, AnalysisService, controller
-    activities/     Activity read API
+    strava/         OAuth, import, per-activity detail import, bulk loop
+    ai/             Anthropic + Gemini services + AnalysisService + controller
+    activities/     Activity read + upload (manual recordings)
   web/
     ui/             Shell, stream-chart, route-map
-    feature-activities/  list + detail page (map, charts, laps)
+    feature-activities/  list + detail page (reused by mobile too)
     feature-import/      Strava connect + import controls
     feature-analysis/    AI analysis UI
   mobile/
-    ble/                 Capacitor BLE wrapper + sensor adapters (HRM, CSC, Battery)
-    recording/           Recording session service + sample types
-    feature-record/      Scan / connect / live tiles / record UI
+    api-client/          ConfigService (apiBaseUrl + userId) + ApiClient
+    ble/                 Capacitor BLE wrapper + sensor adapters
+                         (HRM, CSC, Battery) + known-sensor store
+    recording/           Recording session, upload queue, GPS tracker,
+                         auto-pause
+    weather/             Open-Meteo client with 5-min refresh
+    dev-sim/             Synthetic + replay drivers used by apps/simulator
+    feature-record/      Live record UI + speed gauge / speed ring /
+                         bottom-nav components
+    feature-history/     Past-session list (loads from /api/activities)
+    feature-settings/    Sensors, backend, auto-pause, display config
 prisma/
-  schema.prisma     Database schema (User, StravaAccount, Activity, Stream, Lap, ApiKey, Analysis)
+  schema.prisma     User, StravaAccount, Activity, Stream, Lap, ApiKey,
+                    Analysis — Postgres via Prisma 6
 docker-compose.yml  Postgres 17 for local dev
 ```
 
@@ -174,17 +192,56 @@ const HRM_ADAPTER: SensorAdapter<HrmReading> = {
 `CscTracker` maintains the cross-packet state (handling u16/u32 wrap) needed
 to derive rpm and m/s from successive CSC notifications.
 
+## Simulator (apps/simulator)
+
+`apps/simulator` is a standalone Angular app (no Capacitor) that wraps the
+mobile record screen in a phone-frame chrome and feeds it synthetic or
+replay data instead of real BLE sensors. Useful for iterating on UI without
+deploying to the phone.
+
+```bash
+npm run serve:simulator   # http://localhost:4200 (next free port)
+```
+
+Two drivers:
+
+- **Synthetic** — generated HR / cadence / speed curves you can tweak from
+  the sidebar.
+- **Replay** — pick any of your previously uploaded activities from the
+  backend and play it back. Includes a scrubber, play/pause, variable
+  speed, and live timecodes.
+
+Both drivers go through the same `SensorAdapter` interface the mobile app
+uses, so the record-screen code stays identical between the two apps. The
+simulator overrides `UploadQueue` with a no-op so dev replays don't spam
+the database with duplicates.
+
 ## Key flows
 
 - **Strava connect:** `GET /api/auth/strava/start` redirects to Strava; the
-  callback persists tokens in `StravaAccount`.
-- **Import:** `POST /api/strava/import-recent` pulls recent rides into
-  `Activity` (currently throws `Not implemented` — wire up in
-  `libs/api/strava/src/lib/strava.service.ts#importRecent`).
-- **Activities:** `GET /api/activities`, `GET /api/activities/:id`.
+  callback persists tokens in `StravaAccount` and auto-upserts the User row.
+- **Bulk import:** `POST /api/strava/import-recent` pulls the latest rides
+  into `Activity`. Details (streams + laps) are loaded lazily on first
+  detail-page visit, or eagerly via the "Import all missing details" button.
+- **Activities:** `GET /api/activities`, `GET /api/activities/:id`,
+  `POST /api/activities` (mobile uploads — JSON body with streams + laps).
 - **Analysis:** `POST /api/analysis/run` (server-side SDK call) or
   `POST /api/analysis/export` (returns a prompt + JSON the user pastes
   into Claude/Gemini themselves).
+- **Weather:** Open-Meteo (free, no key) — fetched on the record screen
+  every 5 min based on current GPS.
+
+### Recording UX (mobile)
+
+- **Auto-pause** — configurable speed threshold (default 1 m/s) with a
+  trailing window; paused segments are tracked separately so `durationSec`
+  reflects moving time while `elapsedSec` is wall-clock.
+- **Lap marking** — tap the lap button to split; the live "vs best" tile
+  compares the current lap pace to the best lap of the ride.
+- **Configurable tiles** — pick which metrics show on the record screen
+  and switch between 2-column or 1-column "handlebar" mode in Settings.
+- **Offline queue** — uploads retry next time the app opens; pending count
+  shows in the lime banner.
 
 The AI module supports three key modes (see `libs/shared/data-models/src/lib/ai.ts`):
 - `SERVER` — uses env vars; default when keys are configured server-side.
@@ -200,6 +257,28 @@ npx nx run-many -t test   # run all tests
 npm run prisma:studio     # browse the database
 ```
 
+## Design system — VeloPulse
+
+Tokens live in each app's `styles.scss` and are kept in sync across web,
+mobile, and simulator:
+
+- **Colors** — `#0f0f0f` obsidian canvas, `#c3f400` electric lime accent,
+  `#161e00` on-lime, `#c4c9ac` muted ink.
+- **Typography** — Sora (display + metrics), Space Grotesk (tracked caps,
+  small labels), Inter (body).
+- **Surfaces** — `.velo-carbon` (twill weave), `.velo-glass` (frosted
+  glassmorphism), `.velo-glow-lime` / `.velo-shadow-lime` for hero
+  emphasis, `.velo-pulse` for the recording dot.
+- **Bottom nav** — `.velo-bottom-tab` / `.velo-bottom-tab-active`
+  (lime pill on the active route).
+- **Drawer** — `.velo-drawer` / `.velo-backdrop` slide+fade animations.
+- **Icons** — Material Symbols (outlined, variation-axis controlled).
+
+Mobile shows a hamburger drawer + bottom tab nav (Ride / Activity /
+Settings); web reuses the activities feature lib end-to-end. The mobile
+activity-detail route lazy-loads the same `feature-activities` lib so the
+phone WebView renders identical charts + map + laps + weather.
+
 ## Notes / known gotchas
 
 - The workspace uses Nx 22's TS-references setup. Angular doesn't support it
@@ -207,8 +286,9 @@ npm run prisma:studio     # browse the database
   (already baked into the `serve:*` scripts). When that warning becomes
   redundant in a future Angular release, drop the env var.
 - `apps/api` uses webpack (Nest's standard Nx setup) and bundles workspace libs.
-- `apps/web` uses Angular's esbuild bundler.
+- `apps/web` and `apps/simulator` use Angular's esbuild bundler.
 - Prisma is pinned to v6 — Prisma 7 dropped the `url` field in `datasource`
   and requires a `prisma.config.ts` adapter setup. Upgrade when the docs catch up.
-- `DEV_USER_ID = 'dev-user'` is hardcoded in the controllers as a stand-in
-  for real auth. Replace with a proper auth flow before sharing with anyone.
+- User identity defaults to `dev-user` everywhere (web + mobile + simulator
+  → API). Configure a different one in mobile Settings to namespace per phone.
+  Replace `UserIdMiddleware` with real auth before sharing with anyone.
