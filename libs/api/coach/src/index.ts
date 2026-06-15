@@ -1,0 +1,3 @@
+export * from './lib/coach.module.js';
+export * from './lib/profile.service.js';
+export * from './lib/memory.service.js';

@@ -5,6 +5,7 @@ import { AuthModule, UserIdMiddleware } from 'auth';
 import { AiModule } from 'ai';
 import { StravaModule } from 'strava';
 import { ActivitiesModule } from 'activities';
+import { CoachModule } from 'coach';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -19,6 +20,7 @@ import { AppService } from './app.service';
     AiModule,
     StravaModule,
     ActivitiesModule,
+    CoachModule,
   ],
   controllers: [AppController],
   providers: [AppService],

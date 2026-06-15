@@ -23,6 +23,90 @@ model User {
   activities    Activity[]
   apiKeys       ApiKey[]
   analyses      Analysis[]
+  profile       UserProfile?
+  memories      Memory[]
+  chatThreads   ChatThread[]
+}
+
+// Per-athlete profile + training settings. Canonical source of truth for
+// FTP / max HR / rest HR (today's web AthleteSettingsService keeps a
+// localStorage cache; consolidation comes in a follow-up phase). All
+// fields nullable — users fill them in over time.
+model UserProfile {
+  userId        String    @id
+  birthdate     DateTime?
+  weightKg      Float?
+  heightCm      Float?
+  sportPrimary  String?   // 'Ride', 'VirtualRide', etc.
+  ftpW          Int?
+  maxHrBpm      Int?
+  restHrBpm     Int?
+  weightGoalKg  Float?
+  ftpGoalW      Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Long-term facts the AI coach should remember across sessions.
+// The coach reads/writes these via tool calls; the user can review and
+// delete them from the Profile page (transparency).
+model Memory {
+  id        String         @id @default(cuid())
+  userId    String
+  category  MemoryCategory
+  content   String         @db.Text
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, category, createdAt])
+}
+
+enum MemoryCategory {
+  GOAL
+  PREFERENCE
+  FACT
+  EVENT
+}
+
+// Persistent chat conversation. One thread per user for v1; the schema
+// is multi-thread-ready so adding a thread switcher later is just UI.
+model ChatThread {
+  id        String        @id @default(cuid())
+  userId    String
+  title     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([userId, createdAt])
+}
+
+// One message in a chat thread. For tool_use and tool_result entries the
+// structured payload (tool name, input JSON, output JSON) lives in
+// `metadata` so the coach can rebuild full context on the next turn.
+model ChatMessage {
+  id        String   @id @default(cuid())
+  threadId  String
+  role      ChatRole
+  content   String   @db.Text
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  TOOL
 }
 
 // Strava OAuth tokens. One per user. Refresh tokens rotate.

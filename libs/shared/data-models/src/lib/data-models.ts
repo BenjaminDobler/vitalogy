@@ -5,3 +5,4 @@ export * from './recording-upload.js';
 export * from './weather.js';
 export * from './achievements.js';
 export * from './training-load.js';
+export * from './coach.js';

@@ -26,6 +26,9 @@
     },
     {
       "path": "../../libs/api/db/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/api/coach/tsconfig.lib.json"
     }
   ]
 }

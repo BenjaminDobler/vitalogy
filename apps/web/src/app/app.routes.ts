@@ -20,4 +20,9 @@ export const appRoutes: Route[] = [
     loadChildren: () =>
       import('feature-analysis').then((m) => m.featureAnalysisRoutes),
   },
+  {
+    path: 'profile',
+    loadChildren: () =>
+      import('feature-profile').then((m) => m.featureProfileRoutes),
+  },
 ];

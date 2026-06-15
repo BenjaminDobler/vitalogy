@@ -38,5 +38,6 @@ export class ShellComponent {
     { path: '/activities', label: 'Activities' },
     { path: '/import', label: 'Import' },
     { path: '/analysis', label: 'Analysis' },
+    { path: '/profile', label: 'Profile' },
   ];
 }

@@ -21,6 +21,7 @@
       "feature-activities": ["./libs/web/feature-activities/src/index.ts"],
       "feature-import": ["./libs/web/feature-import/src/index.ts"],
       "feature-analysis": ["./libs/web/feature-analysis/src/index.ts"],
+      "feature-profile": ["./libs/web/feature-profile/src/index.ts"],
       "ui": ["./libs/web/ui/src/index.ts"],
       "ble": ["./libs/mobile/ble/src/index.ts"],
       "recording": ["./libs/mobile/recording/src/index.ts"],

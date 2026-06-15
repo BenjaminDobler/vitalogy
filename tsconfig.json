@@ -74,6 +74,12 @@
     },
     {
       "path": "./libs/mobile/feature-history"
+    },
+    {
+      "path": "./libs/api/coach"
+    },
+    {
+      "path": "./libs/web/feature-profile"
     }
   ]
 }
