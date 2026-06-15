@@ -303,8 +303,13 @@ type SimMode = 'synthetic' | 'replay';
       </aside>
 
       <main class="flex-1 flex items-center justify-center p-8 overflow-y-auto">
-        <div class="w-[390px] max-w-full shadow-2xl rounded-[40px] overflow-hidden border border-slate-300">
-          <router-outlet />
+        <div
+          class="phone-frame w-[390px] h-[844px] max-w-full shadow-2xl rounded-[40px] overflow-hidden border border-slate-300 relative"
+          style="transform: translateZ(0)"
+        >
+          <div class="absolute inset-0 overflow-y-auto">
+            <router-outlet />
+          </div>
         </div>
       </main>
     </div>

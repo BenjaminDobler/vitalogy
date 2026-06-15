@@ -7,6 +7,12 @@
 .pt-safe-6 { padding-top: max(env(safe-area-inset-top), 1.5rem); }
 .pb-safe-8 { padding-bottom: max(env(safe-area-inset-bottom), 2rem); }
 
+/* Phone frame contains the mobile UI. Override viewport-based sizing so
+   the mobile pages size to the frame (844px) instead of the desktop
+   viewport (which would force an internal scroll even for short pages). */
+.phone-frame .min-h-screen { min-height: 100%; }
+.phone-frame .h-screen     { height: 100%; }
+
 /* === VeloPulse — mirrors apps/mobile so the embedded record screen
    renders identically in the phone frame. === */
 .velo-carbon {
