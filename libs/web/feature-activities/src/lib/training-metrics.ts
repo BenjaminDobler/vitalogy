@@ -132,3 +132,99 @@ function sumWindow(arr: number[], start: number, len: number): number {
 export const POWER_CURVE_DURATIONS = [
   1, 5, 10, 30, 60, 120, 300, 600, 1200, 1800, 3600,
 ] as const;
+
+// =========================================================================
+// HR-based metrics — used when there's no power meter on the bike.
+// =========================================================================
+
+export interface HrZoneBreakdown {
+  belowZ1Sec: number;
+  z1Sec: number;
+  z2Sec: number;
+  z3Sec: number;
+  z4Sec: number;
+  z5Sec: number;
+  totalSec: number;
+}
+
+/**
+ * Classic 5-zone HR model based on % of max heart rate.
+ *
+ *   Z1 50–60% (recovery)
+ *   Z2 60–70% (endurance)
+ *   Z3 70–80% (tempo)
+ *   Z4 80–90% (threshold)
+ *   Z5 90–100% (VO2max)
+ *
+ * Samples below 50% are bucketed as "belowZ1Sec".
+ */
+export function hrZones(
+  hr: number[],
+  maxHr: number,
+  hz = 1,
+): HrZoneBreakdown | null {
+  if (hr.length === 0 || maxHr <= 0) return null;
+  const dt = 1 / hz;
+  const out: HrZoneBreakdown = {
+    belowZ1Sec: 0,
+    z1Sec: 0,
+    z2Sec: 0,
+    z3Sec: 0,
+    z4Sec: 0,
+    z5Sec: 0,
+    totalSec: 0,
+  };
+  for (const v of hr) {
+    if (!Number.isFinite(v) || v <= 0) continue;
+    const pct = v / maxHr;
+    if (pct < 0.5) out.belowZ1Sec += dt;
+    else if (pct < 0.6) out.z1Sec += dt;
+    else if (pct < 0.7) out.z2Sec += dt;
+    else if (pct < 0.8) out.z3Sec += dt;
+    else if (pct < 0.9) out.z4Sec += dt;
+    else out.z5Sec += dt;
+    out.totalSec += dt;
+  }
+  return out;
+}
+
+/**
+ * Banister's Training Impulse — an HR-based load score analogous to TSS.
+ *
+ *   TRIMP = durationMin × HRr × 0.64 × e^(1.92 × HRr)   (men's coefficient)
+ *
+ * where HRr = (avgHr - restHr) / (maxHr - restHr) is the heart rate
+ * reserve fraction. Sums linearly across rides for weekly load.
+ */
+export function trimp(
+  durationSec: number,
+  avgHr: number | null,
+  maxHr: number,
+  restHr: number,
+): number | null {
+  if (
+    avgHr == null ||
+    avgHr <= 0 ||
+    maxHr <= restHr ||
+    durationSec <= 0
+  ) {
+    return null;
+  }
+  const hrr = Math.max(0, Math.min(1, (avgHr - restHr) / (maxHr - restHr)));
+  const minutes = durationSec / 60;
+  return minutes * hrr * 0.64 * Math.exp(1.92 * hrr);
+}
+
+/** Simple arithmetic mean of valid HR samples. */
+export function meanHr(hr: number[]): number | null {
+  if (hr.length === 0) return null;
+  let sum = 0;
+  let n = 0;
+  for (const v of hr) {
+    if (Number.isFinite(v) && v > 0) {
+      sum += v;
+      n++;
+    }
+  }
+  return n > 0 ? sum / n : null;
+}

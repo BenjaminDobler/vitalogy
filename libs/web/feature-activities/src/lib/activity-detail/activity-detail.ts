@@ -11,15 +11,19 @@ import {
   type ActivityStream,
   type StreamType,
 } from 'data-models';
-import { FtpService } from '../ftp.service.js';
+import { AthleteSettingsService } from '../athlete-settings.service.js';
 import { PowerCurveChartComponent } from '../power-curve-chart/power-curve-chart.component.js';
+import { HrZonesChartComponent } from '../hr-zones-chart/hr-zones-chart.component.js';
 import {
   autoFtp,
+  hrZones,
   intensityFactor,
+  meanHr,
   normalizedPower,
   powerCurve,
   POWER_CURVE_DURATIONS,
   totalKilojoules,
+  trimp,
   tss,
 } from '../training-metrics.js';
 
@@ -64,6 +68,7 @@ const CHART_SPECS: ChartSpec[] = [
     StreamChartComponent,
     RouteMapComponent,
     PowerCurveChartComponent,
+    HrZonesChartComponent,
   ],
   template: `
     <div class="mb-4">
@@ -221,77 +226,119 @@ const CHART_SPECS: ChartSpec[] = [
         </div>
       </section>
 
-      @if (hasPowerStream()) {
+      @if (hasPowerStream() || hasHrStream()) {
         <section class="mb-8">
-          <div class="flex items-baseline justify-between mb-3 flex-wrap gap-2">
+          <div class="flex items-baseline justify-between mb-3 flex-wrap gap-3">
             <h2 class="font-grotesk text-label-caps text-on-surface uppercase">Performance</h2>
-            <label class="text-xs text-on-surface-variant flex items-center gap-2">
-              FTP
-              <input
-                type="number"
-                min="50"
-                max="600"
-                step="5"
-                [ngModel]="ftp()"
-                (ngModelChange)="setFtp($event)"
-                class="bg-white/5 border border-white/10 rounded px-2 py-0.5 w-20 text-on-surface tabular-nums text-right text-xs"
-              />
-              <span class="text-on-surface-variant">W</span>
-              @if (autoFtpEstimate(); as auto) {
-                <button
-                  type="button"
-                  (click)="setFtp(auto)"
-                  class="text-velo-lime hover:underline"
-                  title="Use 95% of best 20-min power"
-                >
-                  set to {{ auto | number: '1.0-0' }}
-                </button>
+            <div class="flex flex-wrap items-center gap-3 text-xs text-on-surface-variant">
+              @if (hasPowerStream()) {
+                <label class="flex items-center gap-1.5">
+                  FTP
+                  <input
+                    type="number" min="50" max="600" step="5"
+                    [ngModel]="ftp()"
+                    (ngModelChange)="setFtp($event)"
+                    class="bg-white/5 border border-white/10 rounded px-2 py-0.5 w-16 text-on-surface tabular-nums text-right"
+                  /> W
+                  @if (autoFtpEstimate(); as auto) {
+                    <button type="button" (click)="setFtp(auto)" class="text-velo-lime hover:underline" title="Use 95% of best 20-min power">
+                      set to {{ auto | number: '1.0-0' }}
+                    </button>
+                  }
+                </label>
               }
-            </label>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
-              <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Normalized power</div>
-              <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
-                @if (np(); as v) {
-                  {{ v | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">W</span>
-                } @else {
-                  <span class="text-on-surface-variant text-base">—</span>
-                }
-              </div>
-            </div>
-            <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
-              <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Intensity factor</div>
-              <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
-                @if (intensity(); as v) {
-                  {{ v | number: '1.2-2' }}
-                } @else {
-                  <span class="text-on-surface-variant text-base">—</span>
-                }
-              </div>
-            </div>
-            <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
-              <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Training stress</div>
-              <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
-                @if (trainingStress(); as v) {
-                  {{ v | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">TSS</span>
-                } @else {
-                  <span class="text-on-surface-variant text-base">—</span>
-                }
-              </div>
-            </div>
-            <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
-              <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Work</div>
-              <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
-                @if (derivedKj(); as v) {
-                  {{ v | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">kJ</span>
-                } @else {
-                  <span class="text-on-surface-variant text-base">—</span>
-                }
-              </div>
+              @if (hasHrStream()) {
+                <label class="flex items-center gap-1.5">
+                  Max HR
+                  <input
+                    type="number" min="100" max="250" step="1"
+                    [ngModel]="maxHr()"
+                    (ngModelChange)="setMaxHr($event)"
+                    class="bg-white/5 border border-white/10 rounded px-2 py-0.5 w-14 text-on-surface tabular-nums text-right"
+                  />
+                </label>
+                <label class="flex items-center gap-1.5">
+                  Rest
+                  <input
+                    type="number" min="30" max="120" step="1"
+                    [ngModel]="restHr()"
+                    (ngModelChange)="setRestHr($event)"
+                    class="bg-white/5 border border-white/10 rounded px-2 py-0.5 w-14 text-on-surface tabular-nums text-right"
+                  />
+                </label>
+              }
             </div>
           </div>
-          <lib-power-curve-chart [points]="powerCurvePoints()" />
+
+          <!-- Power-based tiles — only when watts stream exists. -->
+          @if (hasPowerStream()) {
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Normalized power</div>
+                <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+                  @if (np(); as v) {
+                    {{ v | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">W</span>
+                  } @else { <span class="text-on-surface-variant text-base">—</span> }
+                </div>
+              </div>
+              <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Intensity factor</div>
+                <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+                  @if (intensity(); as v) {
+                    {{ v | number: '1.2-2' }}
+                  } @else { <span class="text-on-surface-variant text-base">—</span> }
+                </div>
+              </div>
+              <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Training stress</div>
+                <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+                  @if (trainingStress(); as v) {
+                    {{ v | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">TSS</span>
+                  } @else { <span class="text-on-surface-variant text-base">—</span> }
+                </div>
+              </div>
+              <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Work</div>
+                <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+                  @if (derivedKj(); as v) {
+                    {{ v | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">kJ</span>
+                  } @else { <span class="text-on-surface-variant text-base">—</span> }
+                </div>
+              </div>
+            </div>
+            <lib-power-curve-chart [points]="powerCurvePoints()" />
+          }
+
+          <!-- HR-based tiles — only when HR stream exists. -->
+          @if (hasHrStream()) {
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4 mt-4">
+              <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">Avg HR</div>
+                <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+                  @if (avgHrComputed(); as v) {
+                    {{ v | number: '1.0-0' }} <span class="font-grotesk text-label-caps text-on-surface-variant uppercase">bpm</span>
+                  } @else { <span class="text-on-surface-variant text-base">—</span> }
+                </div>
+              </div>
+              <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">TRIMP</div>
+                <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+                  @if (trimpScore(); as v) {
+                    {{ v | number: '1.0-0' }}
+                  } @else { <span class="text-on-surface-variant text-base">—</span> }
+                </div>
+              </div>
+              <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">% of max HR</div>
+                <div class="font-sora text-metric-md text-velo-lime tabular-nums leading-none">
+                  @if (avgHrPercent(); as v) {
+                    {{ v | number: '1.0-0' }}<span class="font-grotesk text-label-caps text-on-surface-variant uppercase">%</span>
+                  } @else { <span class="text-on-surface-variant text-base">—</span> }
+                </div>
+              </div>
+            </div>
+            <lib-hr-zones-chart [breakdown]="hrZonesBreakdown()" />
+          }
         </section>
       }
 
@@ -378,14 +425,22 @@ const CHART_SPECS: ChartSpec[] = [
 })
 export class ActivityDetailComponent {
   private readonly http = inject(HttpClient);
-  private readonly ftpService = inject(FtpService);
+  private readonly settings = inject(AthleteSettingsService);
 
   // Router input binding (provideRouter is configured with withComponentInputBinding()).
   readonly id = input.required<string>();
 
-  protected readonly ftp = this.ftpService.ftp;
+  protected readonly ftp = this.settings.ftp;
+  protected readonly maxHr = this.settings.maxHr;
+  protected readonly restHr = this.settings.restHr;
   protected setFtp(v: number): void {
-    if (Number.isFinite(v) && v > 0) this.ftpService.set(v);
+    if (Number.isFinite(v) && v > 0) this.settings.setFtp(v);
+  }
+  protected setMaxHr(v: number): void {
+    if (Number.isFinite(v) && v > 0) this.settings.setMaxHr(v);
+  }
+  protected setRestHr(v: number): void {
+    if (Number.isFinite(v) && v > 0) this.settings.setRestHr(v);
   }
 
   protected readonly activity = signal<ActivityDetail | null>(null);
@@ -457,6 +512,30 @@ export class ActivityDetailComponent {
   protected readonly derivedKj = computed(() => totalKilojoules(this.wattsStream()));
   protected readonly powerCurvePoints = computed(() =>
     powerCurve(this.wattsStream(), [...POWER_CURVE_DURATIONS]),
+  );
+
+  /** Raw HR stream as number[] (or empty if absent / non-numeric). */
+  private readonly hrStream = computed<number[]>(() => {
+    const streams = this.activity()?.streams ?? [];
+    const w = streams.find((s) => s.type === 'heartrate');
+    if (!w || !Array.isArray(w.data) || typeof w.data[0] !== 'number') return [];
+    return w.data as number[];
+  });
+  protected readonly hasHrStream = computed(() => this.hrStream().length > 0);
+  protected readonly avgHrComputed = computed(() => meanHr(this.hrStream()));
+  protected readonly avgHrPercent = computed(() => {
+    const hr = this.avgHrComputed();
+    const max = this.maxHr();
+    return hr != null && max > 0 ? (hr / max) * 100 : null;
+  });
+  protected readonly trimpScore = computed(() => {
+    const a = this.activity();
+    if (!a) return null;
+    const hr = this.avgHrComputed();
+    return trimp(a.durationSec, hr, this.maxHr(), this.restHr());
+  });
+  protected readonly hrZonesBreakdown = computed(() =>
+    hrZones(this.hrStream(), this.maxHr()),
   );
 
   protected readonly hasWeather = computed(() => {
