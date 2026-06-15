@@ -291,7 +291,11 @@ function summarize(
   );
   const movingSec = Math.max(0, elapsedSec - pausedSec);
 
-  let lastDistance = 0;
+  // CSC sensors report cumulative distance since sensor power-on, not
+  // session start. Distance for the ride is the delta between the first
+  // and last observed cumulative readings.
+  let firstDistance: number | null = null;
+  let lastDistance: number | null = null;
   let sumHr = 0,
     countHr = 0,
     maxHr = 0;
@@ -302,7 +306,10 @@ function summarize(
   let prevAlt: number | null = null;
 
   for (const s of samples) {
-    if (s.distanceM != null) lastDistance = s.distanceM;
+    if (s.distanceM != null) {
+      if (firstDistance == null) firstDistance = s.distanceM;
+      lastDistance = s.distanceM;
+    }
     if (s.hr != null) {
       sumHr += s.hr;
       countHr++;
@@ -321,13 +328,20 @@ function summarize(
     }
   }
 
+  const sessionDistance =
+    firstDistance != null && lastDistance != null
+      ? Math.max(0, lastDistance - firstDistance)
+      : 0;
+
   return {
     elapsedSec,
     movingSec,
-    distanceM: lastDistance,
+    distanceM: sessionDistance,
     elevationGainM: prevAlt != null ? Math.round(elevGain) : null,
     avgSpeedMps:
-      lastDistance > 0 && movingSec > 0 ? lastDistance / movingSec : null,
+      sessionDistance > 0 && movingSec > 0
+        ? sessionDistance / movingSec
+        : null,
     maxSpeedMps: maxSpeed > 0 ? maxSpeed : null,
     avgHr: countHr > 0 ? sumHr / countHr : null,
     maxHr: countHr > 0 ? maxHr : null,
@@ -355,7 +369,10 @@ function buildStreams(
   const hr = samples.map((s) => s.hr ?? null);
   const cadence = samples.map((s) => s.cadenceRpm ?? null);
   const speed = samples.map((s) => s.speedMps ?? null);
-  const distance = samples.map((s) => s.distanceM ?? null);
+  // Rebase cumulative-from-sensor distance to cumulative-from-session-start
+  // so the stream + downstream consumers (charts, TCX export, etc.) see
+  // 0 at t=0 instead of whatever the sensor had counted before recording.
+  const distance = rebaseDistance(samples.map((s) => s.distanceM ?? null));
   const altitude = samples.map((s) => s.altitudeM ?? null);
   const latlng = samples
     .map((s) => (s.lat != null && s.lng != null ? [s.lat, s.lng] : null));
@@ -383,6 +400,17 @@ function buildStreams(
 
 function hasValue(arr: Array<unknown>): boolean {
   return arr.some((v) => v != null);
+}
+
+/**
+ * Subtract the first non-null distance reading from all subsequent ones so
+ * the stream starts at 0. Nulls pass through unchanged.
+ */
+function rebaseDistance(distances: (number | null)[]): (number | null)[] {
+  const firstIdx = distances.findIndex((v) => v != null);
+  if (firstIdx === -1) return distances;
+  const base = distances[firstIdx] as number;
+  return distances.map((v) => (v == null ? null : Math.max(0, v - base)));
 }
 
 /**

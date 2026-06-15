@@ -435,7 +435,11 @@ function computeStats(
   let sumCadence = 0;
   let countCadence = 0;
   let maxSpeed = 0;
-  let lastDistance = 0;
+  // CSC sensors report cumulative distance since sensor power-on, not
+  // session start. Track the first reading so session distance is the
+  // delta within the recording window (same logic as lap distance).
+  let firstDistance: number | null = null;
+  let lastDistance: number | null = null;
   for (const s of samples) {
     if (s.hr != null) {
       sumHr += s.hr;
@@ -450,18 +454,25 @@ function computeStats(
       maxSpeed = s.speedMps;
     }
     if (s.distanceM != null) {
+      if (firstDistance == null) firstDistance = s.distanceM;
       lastDistance = s.distanceM;
     }
   }
+  const sessionDistance =
+    firstDistance != null && lastDistance != null
+      ? Math.max(0, lastDistance - firstDistance)
+      : 0;
   return {
     durationSec: movingSec,
     elapsedSec,
-    distanceM: lastDistance,
+    distanceM: sessionDistance,
     avgHr: countHr > 0 ? sumHr / countHr : undefined,
     maxHr: countHr > 0 ? maxHr : undefined,
     avgCadenceRpm: countCadence > 0 ? sumCadence / countCadence : undefined,
     avgSpeedMps:
-      lastDistance > 0 && movingSec > 0 ? lastDistance / movingSec : undefined,
+      sessionDistance > 0 && movingSec > 0
+        ? sessionDistance / movingSec
+        : undefined,
     maxSpeedMps: maxSpeed > 0 ? maxSpeed : undefined,
   };
 }
