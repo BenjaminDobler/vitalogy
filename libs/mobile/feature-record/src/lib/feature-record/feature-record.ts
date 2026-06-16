@@ -13,6 +13,7 @@ import { SpeedRingComponent } from '../speed-ring/speed-ring.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { WorkoutPickerComponent } from '../workout-picker/workout-picker.component';
 import { WorkoutOverlayComponent } from '../workout-overlay/workout-overlay.component';
+import { CountdownOverlayComponent } from '../countdown-overlay/countdown-overlay.component';
 
 interface TileDef {
   label: string;
@@ -49,6 +50,7 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
     BottomNavComponent,
     WorkoutPickerComponent,
     WorkoutOverlayComponent,
+    CountdownOverlayComponent,
   ],
   template: `
     <div class="min-h-screen velo-carbon text-on-surface flex flex-col font-inter relative" [class.pb-24]="!recording()">
@@ -181,6 +183,14 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
 
       @if (recording() && workoutContext()) {
         <mobile-workout-overlay [ctx]="workoutContext()" />
+      }
+
+      @if (countdownValue() != null) {
+        <mobile-countdown-overlay
+          [value]="countdownValue()!"
+          [title]="countdownTitle()"
+          (cancel)="cancelCountdown()"
+        />
       }
 
       @if (recording() && weatherLatest(); as w) {
@@ -369,6 +379,12 @@ export class FeatureRecord {
   protected readonly workoutContext = this.recordingService.workoutContext;
   /** Workout the rider picked from the picker, applied at start. */
   private pendingWorkout: Workout | null = null;
+
+  /** 3-2-1 countdown shown between picking a workout and recording.start(). */
+  protected readonly countdownValue = signal<number | null>(null);
+  protected readonly countdownTitle = signal<string | null>(null);
+  private countdownTimer?: ReturnType<typeof setInterval>;
+  private audioCtx?: AudioContext;
   private readonly uploadQueue = inject(UploadQueue);
   private readonly gps = inject(GpsTracker);
   private readonly weather = inject(WeatherService);
@@ -481,10 +497,82 @@ export class FeatureRecord {
     }
   }
 
-  /** Picker emitted a workout — tee it up and start the session. */
+  /**
+   * Picker emitted a workout. Run a short 3-2-1 countdown so the rider
+   * can get clipped in / settled before the first interval starts. The
+   * recording itself only kicks off when the countdown hits zero — that
+   * way the first interval gets a full clean window.
+   */
   protected startRecordingWith(workout: Workout): void {
     this.pendingWorkout = workout;
-    void this.startRecording();
+    this.countdownTitle.set(workout.title);
+    this.countdownValue.set(3);
+    this.cueTick(false);
+    this.countdownTimer = setInterval(() => {
+      const cur = this.countdownValue();
+      if (cur == null) return;
+      if (cur > 1) {
+        this.countdownValue.set(cur - 1);
+        this.cueTick(false);
+      } else if (cur === 1) {
+        // Show GO! for one tick so the transition is unmistakable.
+        this.countdownValue.set(0);
+        this.cueTick(true);
+      } else {
+        this.clearCountdown();
+        void this.startRecording();
+      }
+    }, 1000);
+  }
+
+  /** User cancelled the countdown — back out cleanly without starting. */
+  protected cancelCountdown(): void {
+    this.clearCountdown();
+    this.pendingWorkout = null;
+    this.countdownTitle.set(null);
+  }
+
+  private clearCountdown(): void {
+    if (this.countdownTimer) clearInterval(this.countdownTimer);
+    this.countdownTimer = undefined;
+    this.countdownValue.set(null);
+  }
+
+  /**
+   * Audio + haptic cue per tick. Triggered by the picker tap so the
+   * AudioContext is allowed to start on iOS Safari (audio needs a user
+   * gesture). The final GO tick uses a higher frequency + longer ring
+   * so it's distinct from the lead-in ticks.
+   */
+  private cueTick(isGo: boolean): void {
+    try {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate(isGo ? 250 : 80);
+      }
+    } catch {
+      /* permission denied / unsupported — ignore */
+    }
+    try {
+      if (typeof window === 'undefined' || !('AudioContext' in window)) return;
+      if (!this.audioCtx) this.audioCtx = new AudioContext();
+      const ctx = this.audioCtx;
+      if (ctx.state === 'suspended') void ctx.resume();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = isGo ? 1200 : 750;
+      osc.type = 'sine';
+      const dur = isGo ? 0.42 : 0.18;
+      const now = ctx.currentTime;
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.25, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      osc.start(now);
+      osc.stop(now + dur);
+    } catch {
+      /* AudioContext failed — silent fallback, visual + vibration still work */
+    }
   }
 
   async stopRecording(): Promise<void> {
