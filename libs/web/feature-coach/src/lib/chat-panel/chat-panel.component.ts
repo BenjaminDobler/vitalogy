@@ -28,6 +28,7 @@ interface ChatMessage {
 interface ChatThread {
   id: string;
   title: string | null;
+  provider: 'ANTHROPIC' | 'GEMINI' | null;
   messages: ChatMessage[];
 }
 
@@ -65,11 +66,28 @@ const STARTER_QUESTIONS = [
           </h2>
         </div>
         <div class="flex items-center gap-3">
+          @if (thread()?.provider; as p) {
+            <span class="text-[10px] font-grotesk uppercase tracking-wider text-on-surface-variant">
+              {{ p === 'ANTHROPIC' ? 'Claude' : 'Gemini' }}
+            </span>
+          }
           @if (busy()) {
             <span class="text-xs text-on-surface-variant flex items-center gap-1.5">
               <span class="inline-block w-1.5 h-1.5 rounded-full bg-velo-lime animate-pulse"></span>
               Thinking…
             </span>
+          }
+          @if (thread() && (thread()!.messages.length > 0 || thread()!.provider != null)) {
+            <button
+              type="button"
+              (click)="resetThread()"
+              [disabled]="busy()"
+              class="w-8 h-8 rounded-full hover:bg-white/10 text-on-surface-variant flex items-center justify-center disabled:opacity-30"
+              aria-label="Start new conversation"
+              title="Start new conversation"
+            >
+              <span class="material-symbols-outlined text-[18px]">refresh</span>
+            </button>
           }
           <button
             type="button"
@@ -249,6 +267,26 @@ export class ChatPanelComponent implements AfterViewChecked {
         this.busy.set(false);
       },
       error: () => this.busy.set(false),
+    });
+  }
+
+  /**
+   * Wipe the current thread (and the locked provider on it). Used when
+   * the rider wants to switch from Claude to Gemini or vice versa.
+   */
+  protected resetThread(): void {
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.http.delete<ChatThread>('/api/coach/thread').subscribe({
+      next: (t) => {
+        this.thread.set(t);
+        this.busy.set(false);
+        this.lastMessageCount = 0;
+      },
+      error: () => {
+        this.busy.set(false);
+        this.loadThread();
+      },
     });
   }
 

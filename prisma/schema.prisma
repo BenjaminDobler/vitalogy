@@ -79,6 +79,10 @@ model ChatThread {
   id        String        @id @default(cuid())
   userId    String
   title     String?
+  // Provider locked at first message — switching mid-thread would
+  // require reformatting tool_use blocks across SDK shapes, which is
+  // messier than just starting a fresh thread. Null until first send.
+  provider  AIProvider?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 

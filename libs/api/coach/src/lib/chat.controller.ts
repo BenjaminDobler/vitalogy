@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post } from '@nestjs/common';
 import { UserId } from 'auth';
 import { ChatService } from './chat.service.js';
 
@@ -14,6 +14,16 @@ export class ChatController {
   @Get('thread')
   thread(@UserId() userId: string) {
     return this.chat.getThread(userId);
+  }
+
+  /**
+   * Wipe the active thread and start fresh. Used when the rider wants to
+   * switch providers — the locked-provider check on each turn rejects
+   * cross-provider switches mid-thread.
+   */
+  @Delete('thread')
+  reset(@UserId() userId: string) {
+    return this.chat.resetThread(userId);
   }
 
   /**
