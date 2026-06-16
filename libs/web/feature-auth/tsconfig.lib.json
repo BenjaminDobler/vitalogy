@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "../../../dist/out-tsc/libs/web/ui",
+    "outDir": "../../../dist/out-tsc/libs/web/feature-profile",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -10,12 +10,5 @@
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"],
-  "references": [
-    {
-      "path": "../feature-auth/tsconfig.lib.json"
-    },
-    {
-      "path": "../feature-coach/tsconfig.lib.json"
-    }
-  ]
+  "references": []
 }

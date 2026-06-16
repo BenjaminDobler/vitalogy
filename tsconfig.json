@@ -89,6 +89,9 @@
     },
     {
       "path": "./libs/web/feature-workouts"
+    },
+    {
+      "path": "./libs/web/feature-auth"
     }
   ]
 }

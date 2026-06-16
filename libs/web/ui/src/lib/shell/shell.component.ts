@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { CoachPanelService } from 'feature-coach';
+import { AuthService } from 'feature-auth';
 
 @Component({
   selector: 'ui-shell',
@@ -24,21 +25,37 @@ import { CoachPanelService } from 'feature-coach';
               </a>
             }
           </nav>
-          <button
-            type="button"
-            (click)="coachPanel.toggle()"
-            class="ml-auto flex items-center gap-2 px-4 py-2 rounded-full font-grotesk text-label-caps uppercase transition-colors"
-            [class.bg-velo-lime]="coachPanel.isOpen()"
-            [class.text-velo-on-lime]="coachPanel.isOpen()"
-            [class.velo-shadow-lime]="coachPanel.isOpen()"
-            [class.velo-glass]="!coachPanel.isOpen()"
-            [class.text-on-surface]="!coachPanel.isOpen()"
-            [class.hover:bg-white\\/10]="!coachPanel.isOpen()"
-            title="Open coach"
-          >
-            <span class="material-symbols-outlined text-[18px]">smart_toy</span>
-            Coach
-          </button>
+          <div class="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              (click)="coachPanel.toggle()"
+              class="flex items-center gap-2 px-4 py-2 rounded-full font-grotesk text-label-caps uppercase transition-colors"
+              [class.bg-velo-lime]="coachPanel.isOpen()"
+              [class.text-velo-on-lime]="coachPanel.isOpen()"
+              [class.velo-shadow-lime]="coachPanel.isOpen()"
+              [class.velo-glass]="!coachPanel.isOpen()"
+              [class.text-on-surface]="!coachPanel.isOpen()"
+              [class.hover:bg-white\\/10]="!coachPanel.isOpen()"
+              title="Open coach"
+            >
+              <span class="material-symbols-outlined text-[18px]">smart_toy</span>
+              Coach
+            </button>
+            @if (auth.user(); as u) {
+              <div class="hidden sm:flex flex-col items-end leading-tight ml-2 mr-1">
+                <span class="text-[10px] font-grotesk uppercase tracking-wider text-on-surface-variant">Signed in</span>
+                <span class="text-xs text-on-surface truncate max-w-[12rem]">{{ u.email }}</span>
+              </div>
+              <button
+                type="button"
+                (click)="logout()"
+                class="w-9 h-9 rounded-full velo-glass hover:bg-white/10 flex items-center justify-center text-on-surface-variant"
+                title="Sign out"
+              >
+                <span class="material-symbols-outlined text-[18px]">logout</span>
+              </button>
+            }
+          </div>
         </div>
       </header>
       <main class="flex-1">
@@ -51,6 +68,8 @@ import { CoachPanelService } from 'feature-coach';
 })
 export class ShellComponent {
   protected readonly coachPanel = inject(CoachPanelService);
+  protected readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
 
   protected readonly nav = [
     { path: '/activities', label: 'Activities' },
@@ -59,4 +78,9 @@ export class ShellComponent {
     { path: '/analysis', label: 'Analysis' },
     { path: '/profile', label: 'Profile' },
   ];
+
+  protected async logout(): Promise<void> {
+    await this.auth.logout();
+    await this.router.navigateByUrl('/login');
+  }
 }

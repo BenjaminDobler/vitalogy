@@ -27,6 +27,9 @@
     },
     {
       "path": "../../libs/web/feature-activities/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/web/feature-auth/tsconfig.lib.json"
     }
   ]
 }
