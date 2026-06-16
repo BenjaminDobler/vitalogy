@@ -87,6 +87,21 @@ provider keys. Those keys are stored encrypted at rest, so set
 `API_KEY_ENCRYPTION_SECRET` to any long random string (`openssl rand -base64 48`
 is fine). The server refuses to save a user key if this is unset.
 
+### Authentication
+
+Auth supports email/password + Google OAuth. JWT sessions live in an
+httpOnly cookie (`vt_session`, 30-day expiry). Required env:
+
+- `JWT_SECRET` — any long random string (`openssl rand -base64 48`).
+- `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` — OAuth 2.0 client from
+  the [Google Cloud console](https://console.cloud.google.com/apis/credentials).
+- `GOOGLE_REDIRECT_URI` — defaults to
+  `http://localhost:3000/api/auth/google/callback`. Set the same value
+  in the Google client's authorized redirect URIs.
+- `AUTH_REQUIRED` — set to `true` in production to lock all endpoints
+  behind auth. In dev, leave unset and the API falls back to the
+  `dev-user` identity (so the mobile app + simulator keep working).
+
 ## Running
 
 ```bash

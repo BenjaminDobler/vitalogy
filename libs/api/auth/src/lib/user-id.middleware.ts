@@ -1,17 +1,23 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Request, Response, NextFunction } from 'express';
 import { PrismaService } from 'db';
+import { SESSION_COOKIE } from './auth.controller.js';
+import { TokenService } from './token.service.js';
 
 /**
- * Tier-1 "trust the client" tenancy: read `X-User-Id` from the request and use
- * it to scope every downstream DB query. If missing, fall back to a default so
- * the web app (which doesn't send the header) still works out of the box.
+ * Identity resolution for every request. In order of preference:
  *
- * Each first-seen userId gets a User row created automatically — this is fine
- * for a single-user / personal-app stage. When we upgrade to Tier 2 (shared
- * API key) or Tier 3 (OAuth / Sign in with Apple), this is the single piece
- * of code that changes: identity becomes signature-verified instead of
- * trust-the-header.
+ *   1. JWT session cookie (web users who logged in via /auth/login or
+ *      Google OAuth) — the canonical signed identity.
+ *   2. X-User-Id header (mobile recorder — eventually gets its own auth,
+ *      but for now it's the same tier-1 trust-the-client tenancy).
+ *   3. DEFAULT_USER_ID fallback (dev convenience), unless AUTH_REQUIRED
+ *      is set, in which case we 401.
+ *
+ * Paths beginning with /api/auth/ skip identity resolution entirely so
+ * signup / login / OAuth callbacks can complete without a session
+ * already in place.
  */
 
 export const DEFAULT_USER_ID = 'dev-user';
@@ -24,30 +30,60 @@ declare module 'express-serve-static-core' {
 
 @Injectable()
 export class UserIdMiddleware implements NestMiddleware {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tokens: TokenService,
+    private readonly config: ConfigService,
+  ) {}
 
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
+    // /api/auth/* bypasses identity — signup/login produce the session,
+    // me reads it directly off the cookie, OAuth callbacks need to run
+    // before there's a session at all.
+    if (req.path.startsWith('/auth/') || req.path === '/auth') {
+      next();
+      return;
+    }
+
+    const cookieToken = (req.cookies as Record<string, string> | undefined)?.[SESSION_COOKIE];
+    if (cookieToken) {
+      const session = await this.tokens.verify(cookieToken);
+      if (session) {
+        req.userId = session.sub;
+        next();
+        return;
+      }
+    }
+
     const headerVal = req.headers['x-user-id'];
     const headerUserId =
       typeof headerVal === 'string' && headerVal.length > 0 && headerVal.length < 128
         ? headerVal
         : undefined;
-    const userId = headerUserId ?? DEFAULT_USER_ID;
-
-    // Auto-provision the User row if a new client identifies itself for the first time.
-    // For the default user, skip the upsert to keep web-app requests fast.
-    if (headerUserId && headerUserId !== DEFAULT_USER_ID) {
-      await this.prisma.user.upsert({
-        where: { id: userId },
-        create: {
-          id: userId,
-          email: `${userId}@local.vitalogy`,
-        },
-        update: {},
-      });
+    if (headerUserId) {
+      // Auto-provision User row for first-time mobile installs. Skip for
+      // the dev default to keep dev-mode requests fast.
+      if (headerUserId !== DEFAULT_USER_ID) {
+        await this.prisma.user.upsert({
+          where: { id: headerUserId },
+          create: { id: headerUserId, email: `${headerUserId}@local.vitalogy` },
+          update: {},
+        });
+      }
+      req.userId = headerUserId;
+      next();
+      return;
     }
 
-    req.userId = userId;
+    if (this.authRequired()) {
+      throw new UnauthorizedException('Not authenticated');
+    }
+    req.userId = DEFAULT_USER_ID;
     next();
+  }
+
+  private authRequired(): boolean {
+    const v = this.config.get<string>('AUTH_REQUIRED');
+    return v === 'true' || v === '1';
   }
 }

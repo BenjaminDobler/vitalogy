@@ -16,6 +16,10 @@ model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String?
+  // bcrypt hash. Null when the user only signs in via OAuth.
+  passwordHash String?
+  // Linked Google account subject id. Null when the user doesn't use Google sign-in.
+  googleId  String?  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

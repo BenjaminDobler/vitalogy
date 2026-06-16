@@ -1,19 +1,22 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app/app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api');
+  // Parse cookies so the auth middleware + controllers can read the JWT session.
+  app.use(cookieParser());
 
   // Permissive CORS for dev: the mobile WebView origin is `capacitor://localhost`
   // (iOS) or `http://localhost` (Android), and during dev you may also test
-  // from a LAN IP. We allow all origins but expose only the headers we use.
-  // Tighten this for prod by allowing a specific origin list.
+  // from a LAN IP. credentials:true so the browser actually sends the JWT
+  // cookie cross-origin (web dev server at :4200 → api at :3000).
   app.enableCors({
     origin: true,
-    credentials: false,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Id'],
   });
 
