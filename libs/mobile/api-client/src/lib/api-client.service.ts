@@ -33,6 +33,12 @@ export class ApiClient {
     );
   }
 
+  async patch<T>(path: string, body: unknown): Promise<T> {
+    return firstValueFrom(
+      this.http.patch<T>(this.url(path), body, { headers: this.headers() }),
+    );
+  }
+
   private url(path: string): string {
     const base = this.config.apiBaseUrl();
     const prefixed = path.startsWith('/') ? path : `/${path}`;

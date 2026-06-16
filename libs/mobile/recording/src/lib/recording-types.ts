@@ -46,6 +46,8 @@ export interface RecordingSession {
   pauseSegments: PauseSegment[];
   /** Latest weather snapshot taken during the session, if any. */
   weather?: import('data-models').WeatherSnapshot | null;
+  /** Structured workout being executed, if any. Drives the live overlay. */
+  workout?: import('data-models').Workout | null;
 }
 
 export interface LiveStats {

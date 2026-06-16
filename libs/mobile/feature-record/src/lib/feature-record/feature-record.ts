@@ -6,11 +6,13 @@ import { BleManager } from 'ble';
 // to feature-settings. The service is still provided globally via 'root'.
 import { GpsTracker, RecordingService, UploadQueue } from 'recording';
 import { WeatherService } from 'weather';
-import { compassCardinal, describeWeather } from 'data-models';
-import { ConfigService, type RecordTile } from 'api-client';
+import { compassCardinal, describeWeather, type Workout } from 'data-models';
+import { ConfigService, type RecordTile, WorkoutsService } from 'api-client';
 import { SpeedGaugeComponent } from '../speed-gauge/speed-gauge.component';
 import { SpeedRingComponent } from '../speed-ring/speed-ring.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
+import { WorkoutPickerComponent } from '../workout-picker/workout-picker.component';
+import { WorkoutOverlayComponent } from '../workout-overlay/workout-overlay.component';
 
 interface TileDef {
   label: string;
@@ -45,6 +47,8 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
     SpeedGaugeComponent,
     SpeedRingComponent,
     BottomNavComponent,
+    WorkoutPickerComponent,
+    WorkoutOverlayComponent,
   ],
   template: `
     <div class="min-h-screen velo-carbon text-on-surface flex flex-col font-inter relative" [class.pb-24]="!recording()">
@@ -169,6 +173,14 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
             class="inline-block mt-4 px-6 py-2.5 rounded-full bg-velo-lime text-velo-on-lime font-grotesk text-label-caps uppercase velo-shadow-lime hover:brightness-110"
           >Manage sensors</a>
         </div>
+      }
+
+      @if (!recording()) {
+        <mobile-workout-picker (select)="startRecordingWith($event)" />
+      }
+
+      @if (recording() && workoutContext()) {
+        <mobile-workout-overlay [ctx]="workoutContext()" />
       }
 
       @if (recording() && weatherLatest(); as w) {
@@ -352,6 +364,11 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
 export class FeatureRecord {
   private readonly ble = inject(BleManager);
   private readonly recordingService = inject(RecordingService);
+  private readonly workoutsApi = inject(WorkoutsService);
+
+  protected readonly workoutContext = this.recordingService.workoutContext;
+  /** Workout the rider picked from the picker, applied at start. */
+  private pendingWorkout: Workout | null = null;
   private readonly uploadQueue = inject(UploadQueue);
   private readonly gps = inject(GpsTracker);
   private readonly weather = inject(WeatherService);
@@ -434,7 +451,20 @@ export class FeatureRecord {
   async startRecording(): Promise<void> {
     this.errorMsg.set(null);
     try {
-      this.recordingService.start();
+      // Pull the latest athlete params so HR_ZONE / POWER_FTP_PCT targets
+      // resolve against the rider's real numbers. Best-effort — defaults
+      // are fine offline.
+      const athlete = await this.workoutsApi.refreshAthlete();
+      this.recordingService.start({
+        workout: this.pendingWorkout,
+        athlete,
+      });
+      if (this.pendingWorkout) {
+        // Mark IN_PROGRESS server-side so the web view shows it lit up.
+        void this.workoutsApi.start(this.pendingWorkout.id).catch(() => {
+          /* offline is fine; we'll still mark complete on stop */
+        });
+      }
       // Kick off GPS in parallel — non-blocking, recording proceeds even if
       // location permission is denied (indoor / trainer rides).
       void this.gps.start();
@@ -451,15 +481,34 @@ export class FeatureRecord {
     }
   }
 
+  /** Picker emitted a workout — tee it up and start the session. */
+  protected startRecordingWith(workout: Workout): void {
+    this.pendingWorkout = workout;
+    void this.startRecording();
+  }
+
   async stopRecording(): Promise<void> {
     await this.gps.stop();
     this.weather.stop();
     // Stamp the latest weather snapshot onto the session so it goes up with the upload.
     const latestWeather = this.weatherLatest();
     if (latestWeather) this.recordingService.pushWeather(latestWeather);
+    const finishingWorkout = this.pendingWorkout;
+    this.pendingWorkout = null;
     const session = this.recordingService.stop();
     if (session) {
       void this.uploadQueue.enqueue(session);
+      if (finishingWorkout) {
+        // Link the workout to the recorded activity. Upload service knows
+        // the activity id only after the POST succeeds, so we mark the
+        // workout completed with the session id — server can reconcile
+        // when needed; the workout status itself is the user-visible bit.
+        void this.workoutsApi
+          .complete(finishingWorkout.id, session.id)
+          .catch(() => {
+            /* tolerate offline; web's status is just stale until next sync */
+          });
+      }
     }
   }
 

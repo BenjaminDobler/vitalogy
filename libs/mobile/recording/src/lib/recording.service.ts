@@ -7,6 +7,16 @@ import {
   PowerReading,
 } from 'ble';
 import { ConfigService } from 'api-client';
+import type { Workout } from 'data-models';
+import {
+  type AthleteParams,
+  classifyValue,
+  currentIntervalIndex,
+  intervalProgress,
+  resolveTarget,
+  type ResolvedTargetRange,
+  type TargetStatus,
+} from 'training-metrics';
 import { Subscription } from 'rxjs';
 import {
   LiveStats,
@@ -14,6 +24,28 @@ import {
   RecordingSample,
   RecordingSession,
 } from './recording-types';
+
+const DEFAULT_ATHLETE: AthleteParams = {
+  ftpW: 200,
+  maxHrBpm: 190,
+  restHrBpm: 60,
+};
+
+export interface WorkoutLiveContext {
+  workout: Workout;
+  /** -1 = pre-start; intervals.length = workout complete. */
+  intervalIndex: number;
+  intervalLabel: string;
+  intervalElapsedSec: number;
+  intervalRemainingSec: number;
+  intervalDurationSec: number;
+  target: ResolvedTargetRange;
+  /** Current value being compared (bpm or watts depending on target). null if no source. */
+  currentValue: number | null;
+  status: TargetStatus;
+  /** True once the last interval has elapsed. */
+  done: boolean;
+}
 
 /**
  * Orchestrates a single recording session:
@@ -40,6 +72,63 @@ export class RecordingService {
     return computeStats(s.samples, this.now() - s.startedAt, s.pauseSegments);
   });
 
+  /**
+   * Live workout overlay state when a workout was passed to start().
+   * Recomputed every wall-clock tick so the UI auto-advances through
+   * intervals without explicit polling.
+   */
+  readonly workoutContext = computed<WorkoutLiveContext | null>(() => {
+    const s = this.session();
+    if (!s || !s.workout) return null;
+    const w = s.workout;
+    const elapsedSec = Math.max(
+      0,
+      Math.floor((this.now() - s.startedAt) / 1000),
+    );
+    const idx = currentIntervalIndex(elapsedSec, w.intervals);
+    const done = idx >= w.intervals.length;
+    if (done) {
+      const last = w.intervals[w.intervals.length - 1];
+      const lastTarget = resolveTarget(last.target, this.athlete);
+      return {
+        workout: w,
+        intervalIndex: w.intervals.length,
+        intervalLabel: 'Done',
+        intervalElapsedSec: 0,
+        intervalRemainingSec: 0,
+        intervalDurationSec: 0,
+        target: lastTarget,
+        currentValue: null,
+        status: 'in',
+        done: true,
+      };
+    }
+    const interval = w.intervals[idx];
+    const target = resolveTarget(interval.target, this.athlete);
+    const { intervalElapsedSec, intervalRemainingSec, intervalDurationSec } =
+      intervalProgress(elapsedSec, w.intervals, idx);
+    const latest = this.latest();
+    const currentValue =
+      target.unit === 'bpm'
+        ? latest?.hr ?? null
+        : target.unit === 'watts'
+          ? latest?.watts ?? null
+          : null;
+    const status = classifyValue(currentValue, target);
+    return {
+      workout: w,
+      intervalIndex: idx,
+      intervalLabel: interval.label,
+      intervalElapsedSec,
+      intervalRemainingSec,
+      intervalDurationSec,
+      target,
+      currentValue,
+      status,
+      done: false,
+    };
+  });
+
   /** Wall-clock tick (1 Hz) used so duration updates in the UI without new samples. */
   private readonly now = signal(Date.now());
   private tickHandle?: ReturnType<typeof setInterval>;
@@ -62,10 +151,23 @@ export class RecordingService {
   private gpsPrev?: { lat: number; lng: number; t: number };
   private gpsDistanceM = 0;
 
-  start(): RecordingSession {
+  /** Optional athlete params used to resolve workout targets to real bpm / W. */
+  private athlete: AthleteParams = DEFAULT_ATHLETE;
+
+  setAthlete(params: AthleteParams): void {
+    this.athlete = params;
+  }
+
+  /**
+   * Optional workout to execute live. When set, `workoutContext()`
+   * exposes the current interval, target, and in-zone status for the
+   * record overlay. Pass null to clear.
+   */
+  start(opts: { workout?: Workout | null; athlete?: AthleteParams } = {}): RecordingSession {
     if (this.session()) {
       throw new Error('Recording already in progress');
     }
+    if (opts.athlete) this.athlete = opts.athlete;
     const now = Date.now();
     const session: RecordingSession = {
       id: crypto.randomUUID(),
@@ -74,6 +176,7 @@ export class RecordingService {
       lapSplits: [],
       pauseSegments: [],
       weather: null,
+      workout: opts.workout ?? null,
     };
     this.session.set(session);
     this.latest.set(null);
