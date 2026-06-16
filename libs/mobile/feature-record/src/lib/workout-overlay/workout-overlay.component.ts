@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   input,
+  output,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import type { WorkoutLiveContext } from 'recording';
@@ -107,12 +108,42 @@ import type { WorkoutLiveContext } from 'recording';
             ></div>
           }
         </div>
+
+        @if (!c.done) {
+          <div class="mt-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              (click)="previous.emit()"
+              [disabled]="c.intervalIndex === 0 && c.intervalElapsedSec < 1"
+              class="flex-1 flex items-center justify-center gap-1 bg-white/5 hover:bg-white/10 active:scale-95 disabled:opacity-30 rounded-full py-2 transition-transform"
+              aria-label="Previous interval"
+            >
+              <span class="material-symbols-outlined text-on-surface text-[18px]">skip_previous</span>
+              <span class="font-grotesk text-label-caps uppercase text-[11px] tracking-wider text-on-surface">Back</span>
+            </button>
+            <button
+              type="button"
+              (click)="next.emit()"
+              [disabled]="c.intervalIndex >= c.workout.intervals.length - 1 && c.intervalRemainingSec === 0"
+              class="flex-1 flex items-center justify-center gap-1 bg-white/5 hover:bg-white/10 active:scale-95 disabled:opacity-30 rounded-full py-2 transition-transform"
+              aria-label="Skip to next interval"
+            >
+              <span class="font-grotesk text-label-caps uppercase text-[11px] tracking-wider text-on-surface">Skip</span>
+              <span class="material-symbols-outlined text-on-surface text-[18px]">skip_next</span>
+            </button>
+          </div>
+        }
       </div>
     }
   `,
 })
 export class WorkoutOverlayComponent {
   readonly ctx = input.required<WorkoutLiveContext | null>();
+
+  /** Emitted when the rider taps Skip. Parent advances the workout. */
+  readonly next = output<void>();
+  /** Emitted when the rider taps Back. Parent rewinds the workout. */
+  readonly previous = output<void>();
 
   protected readonly segments = computed(() => {
     const c = this.ctx();

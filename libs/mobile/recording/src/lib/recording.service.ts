@@ -81,10 +81,14 @@ export class RecordingService {
     const s = this.session();
     if (!s || !s.workout) return null;
     const w = s.workout;
-    const elapsedSec = Math.max(
+    const rawElapsedSec = Math.max(
       0,
       Math.floor((this.now() - s.startedAt) / 1000),
     );
+    // Add manual skip offset — rider tapped next/prev on the overlay.
+    // Effective elapsed drives interval bookkeeping; raw drives the
+    // recording timer + sample timestamps.
+    const elapsedSec = Math.max(0, rawElapsedSec + this.intervalAdjustmentSec());
     const idx = currentIntervalIndex(elapsedSec, w.intervals);
     const done = idx >= w.intervals.length;
     if (done) {
@@ -154,8 +158,67 @@ export class RecordingService {
   /** Optional athlete params used to resolve workout targets to real bpm / W. */
   private athlete: AthleteParams = DEFAULT_ATHLETE;
 
+  /**
+   * Manual offset added to the effective elapsed time used for interval
+   * advancement. Positive = skipped forward, negative = went back. Does
+   * NOT affect the recording timer or sample timestamps — the ride
+   * itself runs in real time.
+   */
+  private readonly intervalAdjustmentSec = signal(0);
+
   setAthlete(params: AthleteParams): void {
     this.athlete = params;
+  }
+
+  /**
+   * Jump to the next interval. Adds whatever's left in the current
+   * interval to the manual offset, so the effective elapsed lands at
+   * the start of the next one. No-op if the workout is already done.
+   */
+  skipToNextInterval(): void {
+    const s = this.session();
+    if (!s || !s.workout) return;
+    const raw = (this.now() - s.startedAt) / 1000;
+    const eff = Math.max(0, raw + this.intervalAdjustmentSec());
+    const idx = currentIntervalIndex(eff, s.workout.intervals);
+    if (idx >= s.workout.intervals.length) return;
+    const { intervalRemainingSec } = intervalProgress(eff, s.workout.intervals, idx);
+    this.intervalAdjustmentSec.update((v) => v + intervalRemainingSec);
+    this.haptic(120);
+  }
+
+  /**
+   * Media-player-style back. If more than 5s into the current interval,
+   * jumps to its start; otherwise jumps to the start of the previous
+   * interval. No-op at the very first interval's start.
+   */
+  skipToPreviousInterval(): void {
+    const s = this.session();
+    if (!s || !s.workout) return;
+    const raw = (this.now() - s.startedAt) / 1000;
+    const eff = Math.max(0, raw + this.intervalAdjustmentSec());
+    const idx = Math.min(
+      s.workout.intervals.length - 1,
+      currentIntervalIndex(eff, s.workout.intervals),
+    );
+    const { intervalElapsedSec } = intervalProgress(eff, s.workout.intervals, idx);
+    const targetIdx = intervalElapsedSec > 5 ? idx : Math.max(0, idx - 1);
+    let targetStart = 0;
+    for (let i = 0; i < targetIdx; i++) targetStart += s.workout.intervals[i].durationSec;
+    // Effective elapsed must equal targetStart. Solve: adjustment = target - raw.
+    this.intervalAdjustmentSec.set(targetStart - raw);
+    this.haptic(120);
+  }
+
+  /** Short haptic cue tied to a manual interval transition. */
+  private haptic(ms: number): void {
+    try {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate(ms);
+      }
+    } catch {
+      /* unsupported — ignore */
+    }
   }
 
   /**
@@ -185,6 +248,7 @@ export class RecordingService {
     this.sessionHasCsc = false;
     this.gpsPrev = undefined;
     this.gpsDistanceM = 0;
+    this.intervalAdjustmentSec.set(0);
     this.partial = {};
     this.lastFlushT = 0;
 

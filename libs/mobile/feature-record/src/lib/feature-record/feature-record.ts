@@ -182,7 +182,11 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
       }
 
       @if (recording() && workoutContext()) {
-        <mobile-workout-overlay [ctx]="workoutContext()" />
+        <mobile-workout-overlay
+          [ctx]="workoutContext()"
+          (next)="skipInterval()"
+          (previous)="previousInterval()"
+        />
       }
 
       @if (countdownValue() != null) {
@@ -523,6 +527,16 @@ export class FeatureRecord {
         void this.startRecording();
       }
     }, 1000);
+  }
+
+  /** Overlay "Skip" tapped — jump to the next interval. */
+  protected skipInterval(): void {
+    this.recordingService.skipToNextInterval();
+  }
+
+  /** Overlay "Back" tapped — rewind to current-interval start or the previous one. */
+  protected previousInterval(): void {
+    this.recordingService.skipToPreviousInterval();
   }
 
   /** User cancelled the countdown — back out cleanly without starting. */
