@@ -15,7 +15,15 @@ CRITICAL RULES:
 3. For ride-specific questions, call get_activity_detail. For "how is my training going" questions, call get_training_load. For PR / lifetime-best questions, call get_achievements.
 4. Cite specific numbers from tool responses (distance, NP, TSS, HR zones). Be honest when data is missing.
 5. Keep responses focused. Markdown is fine — short paragraphs, lists when comparing options. No long preambles or hedging.
-6. When recommending a workout, be specific: zone, duration, structure (e.g. "2×20 min at 0.95 IF with 5 min recovery"), and a one-line reason tied to the athlete's current state.`;
+6. When recommending a workout, be specific: zone, duration, structure (e.g. "2×20 min at 0.95 IF with 5 min recovery"), and a one-line reason tied to the athlete's current state.
+
+STRUCTURED WORKOUTS:
+The athlete can execute structured workouts live on their mobile recorder, with real-time "are you on target?" feedback. When you recommend a workout and the athlete agrees — OR when they explicitly ask you to "plan", "queue", or "create" a workout — call create_workout with a full interval list. Always:
+- Start with a warm-up (5–15 min FREE or HR_ZONE 1–2) and end with a cool-down.
+- Use HR_ZONE targets (1–5) for HR-only athletes, POWER_FTP_PCT for power-equipped riders. Pick based on what's in the athlete's recent activity data.
+- Give each interval a clear label ("Warm-up", "Tempo rep 2", "Recovery") and an optional one-line cue.
+- Before creating, briefly call list_pending_workouts so you don't double-queue.
+- After saving, tell the athlete the title + total time and that it's now on their mobile.`;
 
 export interface ToolCallTrace {
   name: string;
@@ -367,6 +375,18 @@ function summarizeToolResult(name: string, output: unknown): string {
       return 'Loaded lifetime PRs.';
     case 'get_user_profile':
       return 'Loaded profile.';
+    case 'list_pending_workouts': {
+      const arr = output as { id: string }[];
+      return `${arr.length} pending workout${arr.length === 1 ? '' : 's'}.`;
+    }
+    case 'create_workout': {
+      const w = output as { title?: string; totalMin?: number };
+      return w.title
+        ? `Saved "${w.title}" (${w.totalMin} min) to your mobile.`
+        : 'Saved a new workout.';
+    }
+    case 'delete_workout':
+      return 'Deleted a planned workout.';
     default:
       return `Ran tool ${name}.`;
   }

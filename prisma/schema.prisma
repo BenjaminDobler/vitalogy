@@ -26,6 +26,7 @@ model User {
   profile       UserProfile?
   memories      Memory[]
   chatThreads   ChatThread[]
+  workouts      Workout[]
 }
 
 // Per-athlete profile + training settings. Canonical source of truth for
@@ -107,6 +108,46 @@ enum ChatRole {
   USER
   ASSISTANT
   TOOL
+}
+
+// A planned ride with structured intervals. Most commonly created by the
+// AI coach during chat ("queue an easy ride for tomorrow") but users
+// could also build their own. The mobile recorder picks one up at session
+// start and overlays live "are you on target?" guidance.
+model Workout {
+  id           String          @id @default(cuid())
+  userId       String
+  title        String
+  description  String?
+  // WorkoutInterval[] — full structure in libs/shared/data-models.
+  intervals    Json
+  // Cached totals so list views don't have to walk the JSON.
+  totalSec     Int
+  estimatedTss Int?
+
+  status       WorkoutStatus   @default(PLANNED)
+  scheduledFor DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  // Set when a recording is finished against this workout.
+  activityId   String?
+
+  // Who created it — 'COACH' from a tool-call, 'USER' from the web UI.
+  createdBy    String          @default("USER")
+
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, scheduledFor])
+}
+
+enum WorkoutStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
 }
 
 // Strava OAuth tokens. One per user. Refresh tokens rotate.

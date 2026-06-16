@@ -12,9 +12,10 @@ import {
   trimp,
   tss,
 } from 'training-metrics';
-import type { ActivityStream } from 'data-models';
+import type { ActivityStream, WorkoutInterval } from 'data-models';
 import { MemoryService } from './memory.service.js';
 import { ProfileService } from './profile.service.js';
+import { WorkoutService } from './workout.service.js';
 
 /**
  * Anthropic-shaped tool definition. We don't import the SDK types here
@@ -46,6 +47,7 @@ export class CoachToolsService {
     private readonly profileService: ProfileService,
     private readonly memoryService: MemoryService,
     private readonly activitiesService: ActivitiesService,
+    private readonly workoutService: WorkoutService,
   ) {}
 
   /** Anthropic-shaped tool definitions, in the order they should be advertised. */
@@ -151,6 +153,75 @@ export class CoachToolsService {
           'Get the athlete\'s lifetime PRs (longest ride, most elevation, fastest avg speed, top speed, etc).',
         input_schema: { type: 'object', properties: {} },
       },
+      {
+        name: 'list_pending_workouts',
+        description:
+          'List planned workouts the athlete has queued up (PLANNED + IN_PROGRESS only). ' +
+          "Call this when the athlete asks 'what's on the plan?' or before suggesting a new workout — " +
+          "if one is already queued for today, surface it rather than creating a duplicate.",
+        input_schema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'create_workout',
+        description:
+          "Build a structured workout the athlete can execute live on the mobile recorder. Use when they " +
+          "ask you to plan a session, or after you recommend specific intervals and they want to commit. " +
+          "Intervals are timed segments with a TARGET — pick the most appropriate target kind: " +
+          "HR_ZONE (1–5, for HR-based athletes), HR_RANGE (explicit bpm window), POWER_FTP_PCT (% of FTP), " +
+          "POWER_RANGE (explicit watts), RPE (1–10 perceived effort), or FREE (warm-up / cool-down with no target). " +
+          "Always include warm-up and cool-down. Match the athlete's training context: don't prescribe " +
+          "intervals above FTP if their TSB is already deeply negative.",
+        input_schema: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Short name, e.g. "Sweet-spot 3×12" or "Easy Z2 endurance".' },
+            description: { type: 'string', description: 'One-paragraph context: why this workout, what it builds.' },
+            scheduledFor: {
+              type: 'string',
+              description: 'Optional ISO date or datetime when to do it. Omit for "next ride".',
+            },
+            estimatedTss: { type: 'integer', description: 'Optional TSS estimate for the full workout.' },
+            intervals: {
+              type: 'array',
+              minItems: 2,
+              description: 'Ordered list of intervals from warm-up through cool-down.',
+              items: {
+                type: 'object',
+                properties: {
+                  label: { type: 'string', description: 'e.g. "Warm-up", "Rep 1", "Recovery", "Cool-down".' },
+                  durationSec: { type: 'integer', minimum: 30 },
+                  cue: { type: 'string', description: 'Optional one-line guidance shown during this interval.' },
+                  target: {
+                    type: 'object',
+                    properties: {
+                      kind: {
+                        type: 'string',
+                        enum: ['HR_ZONE', 'HR_RANGE', 'POWER_RANGE', 'POWER_FTP_PCT', 'RPE', 'FREE'],
+                      },
+                      zone: { type: 'integer', minimum: 1, maximum: 5, description: 'For HR_ZONE.' },
+                      min: { type: 'integer', description: 'For HR_RANGE / POWER_RANGE / POWER_FTP_PCT.' },
+                      max: { type: 'integer', description: 'For HR_RANGE / POWER_RANGE / POWER_FTP_PCT.' },
+                      rpe: { type: 'integer', minimum: 1, maximum: 10, description: 'For RPE.' },
+                    },
+                    required: ['kind'],
+                  },
+                },
+                required: ['label', 'durationSec', 'target'],
+              },
+            },
+          },
+          required: ['title', 'intervals'],
+        },
+      },
+      {
+        name: 'delete_workout',
+        description: 'Delete a planned workout (when the athlete decides not to do it).',
+        input_schema: {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+        },
+      },
     ];
   }
 
@@ -182,6 +253,21 @@ export class CoachToolsService {
           return await this.getTrainingLoad(userId);
         case 'get_achievements':
           return await this.activitiesService.achievements(userId);
+        case 'list_pending_workouts':
+          return await this.listPendingWorkouts(userId);
+        case 'create_workout':
+          return await this.createWorkout(
+            userId,
+            input as {
+              title: string;
+              description?: string;
+              scheduledFor?: string;
+              estimatedTss?: number;
+              intervals: WorkoutInterval[];
+            },
+          );
+        case 'delete_workout':
+          return await this.deleteWorkout(userId, input as { id: string });
         default:
           return { error: `Unknown tool: ${name}` };
       }
@@ -336,6 +422,53 @@ export class CoachToolsService {
         : null,
       profileUsed: { ftp, maxHr: maxHrParam, restHr },
     };
+  }
+
+  private async listPendingWorkouts(userId: string) {
+    const all = await this.workoutService.list(userId, { pendingOnly: true });
+    return all.map((w) => ({
+      id: w.id,
+      title: w.title,
+      status: w.status,
+      totalMin: Math.round(w.totalSec / 60),
+      estimatedTss: w.estimatedTss,
+      scheduledFor: w.scheduledFor,
+      intervalCount: w.intervals.length,
+    }));
+  }
+
+  private async createWorkout(
+    userId: string,
+    input: {
+      title: string;
+      description?: string;
+      scheduledFor?: string;
+      estimatedTss?: number;
+      intervals: WorkoutInterval[];
+    },
+  ) {
+    const w = await this.workoutService.create(userId, {
+      title: input.title,
+      description: input.description,
+      scheduledFor: input.scheduledFor,
+      estimatedTss: input.estimatedTss,
+      intervals: input.intervals,
+      createdBy: 'COACH',
+    });
+    return {
+      id: w.id,
+      title: w.title,
+      totalMin: Math.round(w.totalSec / 60),
+      estimatedTss: w.estimatedTss,
+      intervalCount: w.intervals.length,
+      scheduledFor: w.scheduledFor,
+      savedAt: w.createdAt,
+    };
+  }
+
+  private async deleteWorkout(userId: string, input: { id: string }) {
+    await this.workoutService.delete(userId, input.id);
+    return { deleted: input.id };
   }
 
   private async getTrainingLoad(userId: string) {

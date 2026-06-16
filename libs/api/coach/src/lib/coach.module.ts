@@ -9,6 +9,8 @@ import { MemoryController } from './memory.controller.js';
 import { MemoryService } from './memory.service.js';
 import { ProfileController } from './profile.controller.js';
 import { ProfileService } from './profile.service.js';
+import { WorkoutController } from './workout.controller.js';
+import { WorkoutService } from './workout.service.js';
 
 /**
  * Coach surface area — profile, memories, and the conversational chat +
@@ -17,8 +19,19 @@ import { ProfileService } from './profile.service.js';
  */
 @Module({
   imports: [DbModule, AiModule, ActivitiesModule],
-  controllers: [ProfileController, MemoryController, ChatController],
-  providers: [ProfileService, MemoryService, CoachToolsService, ChatService],
-  exports: [ProfileService, MemoryService],
+  controllers: [
+    ProfileController,
+    MemoryController,
+    ChatController,
+    WorkoutController,
+  ],
+  providers: [
+    ProfileService,
+    MemoryService,
+    WorkoutService,
+    CoachToolsService,
+    ChatService,
+  ],
+  exports: [ProfileService, MemoryService, WorkoutService],
 })
 export class CoachModule {}
