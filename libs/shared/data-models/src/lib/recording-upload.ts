@@ -30,6 +30,14 @@ export interface UploadActivityRequest {
   pauseSegments?: Array<{ start: number; end: number }>;
   /** Weather snapshot — most-recent observation during the session. */
   weather?: WeatherSnapshot;
+  /**
+   * Workout this recording was executing. When set, the server links the
+   * resulting Activity row to the Workout (status → COMPLETED, activityId
+   * pointed at the real activity id). Tolerates upload happening hours
+   * after the rider finished — the mobile UI marked it complete locally
+   * already; this step just makes the linkage usable from the web.
+   */
+  workoutId?: string;
 }
 
 export interface UploadSample {

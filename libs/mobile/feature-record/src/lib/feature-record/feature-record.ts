@@ -595,22 +595,16 @@ export class FeatureRecord {
     // Stamp the latest weather snapshot onto the session so it goes up with the upload.
     const latestWeather = this.weatherLatest();
     if (latestWeather) this.recordingService.pushWeather(latestWeather);
-    const finishingWorkout = this.pendingWorkout;
     this.pendingWorkout = null;
     const session = this.recordingService.stop();
     if (session) {
+      // The session carries workout.id (set at start()); the upload
+      // request includes workoutId and the server reconciles
+      // workout.activityId + status=COMPLETED once the activity row exists.
+      // No separate complete() call needed — that previously sent the
+      // mobile session UUID as activityId, which couldn't link to the
+      // real Activity row on the web.
       void this.uploadQueue.enqueue(session);
-      if (finishingWorkout) {
-        // Link the workout to the recorded activity. Upload service knows
-        // the activity id only after the POST succeeds, so we mark the
-        // workout completed with the session id — server can reconcile
-        // when needed; the workout status itself is the user-visible bit.
-        void this.workoutsApi
-          .complete(finishingWorkout.id, session.id)
-          .catch(() => {
-            /* tolerate offline; web's status is just stale until next sync */
-          });
-      }
     }
   }
 

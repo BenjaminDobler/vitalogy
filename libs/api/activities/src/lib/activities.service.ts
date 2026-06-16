@@ -49,6 +49,12 @@ export class ActivitiesService {
       where: { source_sourceId: { source: 'MANUAL', sourceId: req.sessionId } },
     });
     if (existing) {
+      // Re-uploads still get the workout link refreshed — if the rider
+      // re-uploaded an old session that just gained a workout id, point
+      // the workout at the (already-existing) activity row.
+      if (req.workoutId) {
+        await this.linkWorkoutToActivity(userId, req.workoutId, existing.id);
+      }
       return { activityId: existing.id, alreadyExisted: true };
     }
 
@@ -119,7 +125,43 @@ export class ActivitiesService {
       await this.prisma.lap.createMany({ data: lapsToCreate });
     }
 
+    // Workout reconciliation. The mobile recorder marks the workout
+    // COMPLETED locally on stop with activityId = null (because the
+    // server hadn't seen the upload yet); now we finalize the link.
+    if (req.workoutId) {
+      await this.linkWorkoutToActivity(userId, req.workoutId, created.id);
+    }
+
     return { activityId: created.id, alreadyExisted: false };
+  }
+
+  /**
+   * Set the workout's activityId + status=COMPLETED. Best-effort: if the
+   * workout doesn't exist or belongs to a different user we silently
+   * skip — the recording itself is already saved, and the workout link
+   * is recoverable.
+   */
+  private async linkWorkoutToActivity(
+    userId: string,
+    workoutId: string,
+    activityId: string,
+  ): Promise<void> {
+    try {
+      const workout = await this.prisma.workout.findFirst({
+        where: { id: workoutId, userId },
+      });
+      if (!workout) return;
+      await this.prisma.workout.update({
+        where: { id: workoutId },
+        data: {
+          status: 'COMPLETED',
+          activityId,
+          completedAt: workout.completedAt ?? new Date(),
+        },
+      });
+    } catch {
+      /* DB transient — recording upload itself succeeded, link is recoverable */
+    }
   }
 
   async get(userId: string, id: string): Promise<ActivityDetail> {

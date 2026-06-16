@@ -93,6 +93,7 @@ export class UploadQueue {
       samples: session.samples,
       lapSplits: session.lapSplits,
       weather: session.weather ?? undefined,
+      workoutId: session.workout?.id,
     };
     await this.api.post<UploadActivityResponse>('/api/activities', req);
   }
