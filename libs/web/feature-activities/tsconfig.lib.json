@@ -12,19 +12,16 @@
   "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"],
   "references": [
     {
-      "path": "../../shared/data-models/tsconfig.lib.json"
+      "path": "../feature-workouts/tsconfig.lib.json"
     },
     {
       "path": "../../shared/training-metrics/tsconfig.lib.json"
     },
     {
+      "path": "../../shared/data-models/tsconfig.lib.json"
+    },
+    {
       "path": "../ui/tsconfig.lib.json"
-    },
-    {
-      "path": "../feature-coach/tsconfig.lib.json"
-    },
-    {
-      "path": "../feature-workouts/tsconfig.lib.json"
     }
   ]
 }

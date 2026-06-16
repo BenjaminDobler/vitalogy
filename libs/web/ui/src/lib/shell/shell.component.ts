@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { CoachPanelService } from 'feature-coach';
 
 @Component({
   selector: 'ui-shell',
@@ -23,6 +24,21 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
               </a>
             }
           </nav>
+          <button
+            type="button"
+            (click)="coachPanel.toggle()"
+            class="ml-auto flex items-center gap-2 px-4 py-2 rounded-full font-grotesk text-label-caps uppercase transition-colors"
+            [class.bg-velo-lime]="coachPanel.isOpen()"
+            [class.text-velo-on-lime]="coachPanel.isOpen()"
+            [class.velo-shadow-lime]="coachPanel.isOpen()"
+            [class.velo-glass]="!coachPanel.isOpen()"
+            [class.text-on-surface]="!coachPanel.isOpen()"
+            [class.hover:bg-white\\/10]="!coachPanel.isOpen()"
+            title="Open coach"
+          >
+            <span class="material-symbols-outlined text-[18px]">smart_toy</span>
+            Coach
+          </button>
         </div>
       </header>
       <main class="flex-1">
@@ -34,6 +50,8 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
   `,
 })
 export class ShellComponent {
+  protected readonly coachPanel = inject(CoachPanelService);
+
   protected readonly nav = [
     { path: '/activities', label: 'Activities' },
     { path: '/workouts', label: 'Workouts' },

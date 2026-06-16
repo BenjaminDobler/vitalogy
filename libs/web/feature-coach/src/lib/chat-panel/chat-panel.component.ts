@@ -11,6 +11,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { MarkdownPipe } from '../markdown.pipe.js';
+import { CoachPanelService } from '../coach-panel.service.js';
 
 interface ChatMessage {
   id: string;
@@ -50,7 +51,7 @@ const STARTER_QUESTIONS = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe, FormsModule, MarkdownPipe],
   template: `
-    <section class="velo-glass rounded-xl flex flex-col" style="min-height: 520px; max-height: 720px;">
+    <section class="h-full flex flex-col">
       <header class="px-5 py-3 border-b border-white/5 flex items-center justify-between gap-3">
         <div class="flex items-center gap-2">
           <span class="material-symbols-outlined text-velo-lime">smart_toy</span>
@@ -58,12 +59,23 @@ const STARTER_QUESTIONS = [
             Coach
           </h2>
         </div>
-        @if (busy()) {
-          <span class="text-xs text-on-surface-variant flex items-center gap-1.5">
-            <span class="inline-block w-1.5 h-1.5 rounded-full bg-velo-lime animate-pulse"></span>
-            Thinking…
-          </span>
-        }
+        <div class="flex items-center gap-3">
+          @if (busy()) {
+            <span class="text-xs text-on-surface-variant flex items-center gap-1.5">
+              <span class="inline-block w-1.5 h-1.5 rounded-full bg-velo-lime animate-pulse"></span>
+              Thinking…
+            </span>
+          }
+          <button
+            type="button"
+            (click)="panel.close()"
+            class="w-8 h-8 rounded-full hover:bg-white/10 text-on-surface-variant flex items-center justify-center"
+            aria-label="Close coach panel"
+            title="Close"
+          >
+            <span class="material-symbols-outlined text-[20px]">close</span>
+          </button>
+        </div>
       </header>
 
       <div #scroller class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
@@ -161,6 +173,7 @@ const STARTER_QUESTIONS = [
 export class ChatPanelComponent implements AfterViewChecked {
   private readonly http = inject(HttpClient);
   private readonly scroller = viewChild<ElementRef<HTMLDivElement>>('scroller');
+  protected readonly panel = inject(CoachPanelService);
 
   protected readonly thread = signal<ChatThread | null>(null);
   protected readonly busy = signal(false);

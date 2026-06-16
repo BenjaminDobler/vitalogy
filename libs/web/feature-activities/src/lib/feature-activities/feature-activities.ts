@@ -7,7 +7,6 @@ import type {
   AchievementsResponse,
   TrainingLoadResponse,
 } from 'data-models';
-import { ChatPanelComponent } from 'feature-coach';
 import { WorkoutCardComponent } from 'feature-workouts';
 import { AthleteSettingsService } from '../athlete-settings.service.js';
 import { TrainingLoadChartComponent } from '../training-load-chart/training-load-chart.component.js';
@@ -31,7 +30,6 @@ interface PrCard {
     DecimalPipe,
     RouterLink,
     TrainingLoadChartComponent,
-    ChatPanelComponent,
     WorkoutCardComponent,
   ],
   template: `
@@ -46,10 +44,6 @@ interface PrCard {
         Refresh
       </button>
     </div>
-
-    <section class="mb-8">
-      <lib-chat-panel />
-    </section>
 
     <lib-workout-card />
 
