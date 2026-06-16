@@ -1,17 +1,30 @@
-<ui-shell>
-  <router-outlet></router-outlet>
-</ui-shell>
-
-<!-- Coach drawer — overlays everything. Backdrop tap or Esc closes. -->
+<!--
+  When the coach drawer is open, push the shell + page content to the
+  left on viewports wide enough to comfortably show both side by side
+  (>= sm). On smaller screens the drawer overlays full-width and a
+  no-blur scrim closes it on tap.
+-->
 <div
-  class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
+  class="transition-[padding] duration-300 ease-out"
+  [class.sm:pr-[480px]]="coachPanel.isOpen()"
+>
+  <ui-shell>
+    <router-outlet></router-outlet>
+  </ui-shell>
+</div>
+
+<!-- Mobile-only backdrop. No blur so the page stays readable; the dark
+     scrim is just a hint that the drawer is modal here. -->
+<div
+  class="fixed inset-0 z-40 bg-black/40 transition-opacity duration-300 sm:hidden"
   [class.opacity-0]="!coachPanel.isOpen()"
   [class.pointer-events-none]="!coachPanel.isOpen()"
   [class.opacity-100]="coachPanel.isOpen()"
   (click)="coachPanel.close()"
 ></div>
+
 <aside
-  class="fixed top-0 right-0 bottom-0 z-50 w-full sm:w-[480px] velo-glass border-l border-white/10 flex flex-col transition-transform duration-300 ease-out shadow-2xl"
+  class="fixed top-0 right-0 bottom-0 z-50 w-full sm:w-[480px] velo-carbon border-l border-white/10 flex flex-col transition-transform duration-300 ease-out shadow-2xl"
   [class.translate-x-0]="coachPanel.isOpen()"
   [class.translate-x-full]="!coachPanel.isOpen()"
 >

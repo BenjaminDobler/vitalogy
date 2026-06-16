@@ -50,8 +50,13 @@ const STARTER_QUESTIONS = [
   selector: 'lib-chat-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe, FormsModule, MarkdownPipe],
+  // host class makes the chat panel a flex column that fills its drawer
+  // parent. `min-h-0` is the classic flex-overflow gotcha — without it
+  // the scroller div can't shrink below its content height and
+  // overflow-y-auto becomes a no-op.
+  host: { class: 'flex-1 min-h-0 flex flex-col' },
   template: `
-    <section class="h-full flex flex-col">
+    <section class="flex-1 min-h-0 flex flex-col">
       <header class="px-5 py-3 border-b border-white/5 flex items-center justify-between gap-3">
         <div class="flex items-center gap-2">
           <span class="material-symbols-outlined text-velo-lime">smart_toy</span>
@@ -78,7 +83,7 @@ const STARTER_QUESTIONS = [
         </div>
       </header>
 
-      <div #scroller class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <div #scroller class="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
         @if (thread() && thread()!.messages.length === 0 && !busy()) {
           <div class="text-center text-on-surface-variant text-sm py-12">
             <p class="mb-4">Hi! I'm your training coach.</p>
