@@ -11,6 +11,9 @@
       "path": "../../libs/web/ui/tsconfig.lib.json"
     },
     {
+      "path": "../../libs/web/feature-workouts/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/web/feature-profile/tsconfig.lib.json"
     },
     {

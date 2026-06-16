@@ -86,6 +86,9 @@
     },
     {
       "path": "./libs/web/feature-coach"
+    },
+    {
+      "path": "./libs/web/feature-workouts"
     }
   ]
 }

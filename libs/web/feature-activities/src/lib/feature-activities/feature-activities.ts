@@ -8,6 +8,7 @@ import type {
   TrainingLoadResponse,
 } from 'data-models';
 import { ChatPanelComponent } from 'feature-coach';
+import { WorkoutCardComponent } from 'feature-workouts';
 import { AthleteSettingsService } from '../athlete-settings.service.js';
 import { TrainingLoadChartComponent } from '../training-load-chart/training-load-chart.component.js';
 import { recommendWorkout } from '../workout-recommendation.js';
@@ -31,6 +32,7 @@ interface PrCard {
     RouterLink,
     TrainingLoadChartComponent,
     ChatPanelComponent,
+    WorkoutCardComponent,
   ],
   template: `
     <div class="flex items-baseline justify-between mb-6">
@@ -48,6 +50,8 @@ interface PrCard {
     <section class="mb-8">
       <lib-chat-panel />
     </section>
+
+    <lib-workout-card />
 
     @if (load(); as l) {
       @if (recommendation(); as r) {

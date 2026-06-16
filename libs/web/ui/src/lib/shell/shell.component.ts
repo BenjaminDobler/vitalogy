@@ -36,6 +36,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 export class ShellComponent {
   protected readonly nav = [
     { path: '/activities', label: 'Activities' },
+    { path: '/workouts', label: 'Workouts' },
     { path: '/import', label: 'Import' },
     { path: '/analysis', label: 'Analysis' },
     { path: '/profile', label: 'Profile' },

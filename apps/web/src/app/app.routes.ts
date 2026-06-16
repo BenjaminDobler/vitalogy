@@ -25,4 +25,9 @@ export const appRoutes: Route[] = [
     loadChildren: () =>
       import('feature-profile').then((m) => m.featureProfileRoutes),
   },
+  {
+    path: 'workouts',
+    loadChildren: () =>
+      import('feature-workouts').then((m) => m.featureWorkoutsRoutes),
+  },
 ];
