@@ -4,10 +4,17 @@ import { jwtVerify, SignJWT } from 'jose';
 
 const ALGO = 'HS256';
 const SESSION_TTL_SEC = 60 * 60 * 24 * 30; // 30 days
+const PAIR_TTL_SEC = 5 * 60; // 5 minutes — long enough to scan, short enough to be safe
 
 export interface SessionPayload {
   sub: string; // user id
   email: string;
+}
+
+export interface PairPayload {
+  sub: string;
+  email: string;
+  purpose: 'pair';
 }
 
 /**
@@ -37,9 +44,43 @@ export class TokenService {
       const { payload } = await jwtVerify(token, this.secret(), {
         algorithms: [ALGO],
       });
+      // Reject pair tokens here so a pairing JWT can't accidentally be
+      // used as a session token.
+      if (payload['purpose'] != null) return null;
       if (typeof payload.sub !== 'string') return null;
       const email = typeof payload['email'] === 'string' ? payload['email'] : '';
       return { sub: payload.sub, email };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Pair-TTL in seconds — used by the web UI to drive the countdown. */
+  readonly pairTtlSec = PAIR_TTL_SEC;
+
+  /**
+   * Short-lived QR pairing token. The web app shows this as a QR code;
+   * the mobile app scans it, hits /auth/pair/redeem, and gets a real
+   * session token back. Purpose claim prevents replay as a session.
+   */
+  async signPair(payload: SessionPayload): Promise<string> {
+    return new SignJWT({ email: payload.email, purpose: 'pair' })
+      .setProtectedHeader({ alg: ALGO })
+      .setSubject(payload.sub)
+      .setIssuedAt()
+      .setExpirationTime(`${PAIR_TTL_SEC}s`)
+      .sign(this.secret());
+  }
+
+  async verifyPair(token: string): Promise<PairPayload | null> {
+    try {
+      const { payload } = await jwtVerify(token, this.secret(), {
+        algorithms: [ALGO],
+      });
+      if (payload['purpose'] !== 'pair') return null;
+      if (typeof payload.sub !== 'string') return null;
+      const email = typeof payload['email'] === 'string' ? payload['email'] : '';
+      return { sub: payload.sub, email, purpose: 'pair' };
     } catch {
       return null;
     }

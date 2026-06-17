@@ -24,6 +24,17 @@ interface LoginBody {
   email: string;
   password: string;
 }
+interface PairRedeemBody {
+  token: string;
+}
+
+/** Shape returned by signup/login/redeem — includes the JWT for mobile clients. */
+interface AuthSuccessResponse {
+  id: string;
+  email: string;
+  name: string | null;
+  token: string;
+}
 
 /** Cookie that carries the JWT session token. */
 export const SESSION_COOKIE = 'vt_session';
@@ -46,7 +57,7 @@ export class AuthController {
   async signup(
     @Body() body: SignupBody,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ id: string; email: string; name: string | null }> {
+  ): Promise<AuthSuccessResponse> {
     const email = sanitizeEmail(body.email);
     const password = body.password ?? '';
     if (!isValidEmail(email)) throw new BadRequestException('Invalid email');
@@ -66,8 +77,8 @@ export class AuthController {
       },
     });
 
-    await this.issueSession(res, user.id, user.email);
-    return { id: user.id, email: user.email, name: user.name };
+    const token = await this.issueSession(res, user.id, user.email);
+    return { id: user.id, email: user.email, name: user.name, token };
   }
 
   @Post('login')
@@ -75,7 +86,7 @@ export class AuthController {
   async login(
     @Body() body: LoginBody,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ id: string; email: string; name: string | null }> {
+  ): Promise<AuthSuccessResponse> {
     const email = sanitizeEmail(body.email);
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user || !user.passwordHash) {
@@ -85,8 +96,45 @@ export class AuthController {
     const ok = await this.passwords.verify(body.password ?? '', user.passwordHash);
     if (!ok) throw new UnauthorizedException('Invalid email or password');
 
-    await this.issueSession(res, user.id, user.email);
-    return { id: user.id, email: user.email, name: user.name };
+    const token = await this.issueSession(res, user.id, user.email);
+    return { id: user.id, email: user.email, name: user.name, token };
+  }
+
+  /**
+   * Generate a short-lived pairing token that the web client renders as
+   * a QR code. The mobile app scans + posts to /pair/redeem to exchange
+   * it for a real session JWT. Requires an authenticated caller — only
+   * a signed-in user can mint pairing tokens for their own account.
+   */
+  @Post('pair/create')
+  async createPair(@Req() req: Request): Promise<{ token: string; expiresInSec: number }> {
+    const userId = req.userId;
+    if (!userId) throw new UnauthorizedException();
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException();
+    const token = await this.tokens.signPair({ sub: user.id, email: user.email });
+    return { token, expiresInSec: this.tokens.pairTtlSec };
+  }
+
+  /**
+   * Mobile-side endpoint: takes a pairing JWT from the scanned QR code
+   * and returns a session JWT bound to the same user. We don't set the
+   * cookie here — mobile carries the token as a Bearer header — but
+   * the web flow could also call this if it wanted to.
+   */
+  @Post('pair/redeem')
+  @HttpCode(200)
+  async redeemPair(
+    @Body() body: PairRedeemBody,
+  ): Promise<AuthSuccessResponse> {
+    const pair = await this.tokens.verifyPair(body.token ?? '');
+    if (!pair) {
+      throw new UnauthorizedException('Pairing token is invalid or expired');
+    }
+    const user = await this.prisma.user.findUnique({ where: { id: pair.sub } });
+    if (!user) throw new UnauthorizedException();
+    const token = await this.tokens.sign({ sub: user.id, email: user.email });
+    return { id: user.id, email: user.email, name: user.name, token };
   }
 
   @Post('logout')
@@ -113,13 +161,19 @@ export class AuthController {
     return { id: user.id, email: user.email, name: user.name };
   }
 
+  /**
+   * Sign a session JWT, set it as the web cookie, AND return the raw
+   * token so mobile clients (which can't rely on httpOnly cookies the
+   * same way) can grab it from the response body.
+   */
   private async issueSession(
     res: Response,
     userId: string,
     email: string,
-  ): Promise<void> {
+  ): Promise<string> {
     const token = await this.tokens.sign({ sub: userId, email });
     res.cookie(SESSION_COOKIE, token, this.cookieOptions(this.tokens.sessionTtlSec * 1000));
+    return token;
   }
 
   private cookieOptions(maxAgeMs: number): {

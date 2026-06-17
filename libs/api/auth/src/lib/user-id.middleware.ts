@@ -8,16 +8,17 @@ import { TokenService } from './token.service.js';
 /**
  * Identity resolution for every request. In order of preference:
  *
- *   1. JWT session cookie (web users who logged in via /auth/login or
- *      Google OAuth) — the canonical signed identity.
- *   2. X-User-Id header (mobile recorder — eventually gets its own auth,
- *      but for now it's the same tier-1 trust-the-client tenancy).
- *   3. DEFAULT_USER_ID fallback (dev convenience), unless AUTH_REQUIRED
+ *   1. JWT session cookie (web users — canonical signed identity).
+ *   2. Authorization: Bearer <jwt> (mobile clients that can't use
+ *      httpOnly cookies — same JWT, just carried differently).
+ *   3. X-User-Id header (legacy tier-1 trust-the-client tenancy, kept
+ *      so existing mobile installs that haven't paired yet still work).
+ *   4. DEFAULT_USER_ID fallback (dev convenience), unless AUTH_REQUIRED
  *      is set, in which case we 401.
  *
  * Paths beginning with /api/auth/ skip identity resolution entirely so
- * signup / login / OAuth callbacks can complete without a session
- * already in place.
+ * signup / login / OAuth callbacks / pair-redeem can complete without
+ * a session already in place.
  */
 
 export const DEFAULT_USER_ID = 'dev-user';
@@ -52,6 +53,22 @@ export class UserIdMiddleware implements NestMiddleware {
         req.userId = session.sub;
         next();
         return;
+      }
+    }
+
+    // Mobile clients (Capacitor WebView, etc.) can't rely on httpOnly
+    // cookies the same way browsers can — they present the session JWT
+    // as an Authorization: Bearer header instead.
+    const authHeader = req.headers['authorization'];
+    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+      const bearer = authHeader.slice('Bearer '.length).trim();
+      if (bearer) {
+        const session = await this.tokens.verify(bearer);
+        if (session) {
+          req.userId = session.sub;
+          next();
+          return;
+        }
       }
     }
 
