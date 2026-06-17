@@ -18,6 +18,9 @@
     },
     {
       "path": "../../libs/mobile/feature-record/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/mobile/api-client/tsconfig.lib.json"
     }
   ]
 }
