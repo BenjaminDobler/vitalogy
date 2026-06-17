@@ -181,18 +181,19 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
         </button>
       }
 
-      @if (!recording() && connected().length === 0) {
-        <div class="mx-5 mt-6 rounded-xl velo-glass px-6 py-10 text-center">
-          <span class="material-symbols-outlined text-on-surface-variant text-[36px]">bluetooth_searching</span>
-          <p class="mt-3 font-grotesk text-label-caps text-on-surface-variant uppercase">
-            No sensors connected
-          </p>
-          <a
-            routerLink="/settings"
-            fragment="sensors"
-            class="inline-block mt-4 px-6 py-2.5 rounded-full bg-velo-lime text-velo-on-lime font-grotesk text-label-caps uppercase velo-shadow-lime hover:brightness-110"
-          >Manage sensors</a>
-        </div>
+      <!-- No-sensors warning is now a slim banner — the tile grid and
+           workout picker stay visible so the rider can still preview the
+           layout and even start a GPS-only / timed ride. -->
+      @if (connected().length === 0) {
+        <a
+          routerLink="/settings"
+          fragment="sensors"
+          class="mx-5 mt-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-400/30 text-amber-200 font-grotesk text-label-caps uppercase tracking-wider text-xs flex items-center gap-2 hover:bg-amber-500/15"
+        >
+          <span class="material-symbols-outlined text-amber-300 text-[18px]">bluetooth_disabled</span>
+          <span class="flex-1">No sensors connected</span>
+          <span class="text-amber-300">Manage →</span>
+        </a>
       }
 
       @if (!recording()) {
@@ -389,14 +390,16 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
             </button>
           </div>
         </div>
-      } @else if (connected().length > 0) {
+      } @else {
         <ng-container *ngTemplateOutlet="tilesTpl"></ng-container>
 
         <div class="px-5 pb-safe-8 sticky bottom-0 bg-gradient-to-t from-surface-dim via-surface-dim/80 to-transparent pt-6">
+          <!-- Start Ride is always enabled — even with no BLE sensors, the
+               rider can do a GPS-only / timed ride and follow a workout's
+               clock without HR/power feedback. -->
           <button
             (click)="startRecording()"
-            [disabled]="connected().length === 0"
-            class="w-full py-5 rounded-full bg-velo-lime text-velo-on-lime font-sora italic uppercase tracking-tighter text-2xl velo-shadow-lime flex items-center justify-center gap-3 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+            class="w-full py-5 rounded-full bg-velo-lime text-velo-on-lime font-sora italic uppercase tracking-tighter text-2xl velo-shadow-lime flex items-center justify-center gap-3 hover:brightness-110 active:scale-[0.98] transition-all"
           >
             <span class="material-symbols-outlined filled text-[28px]">play_arrow</span>
             Start Ride
@@ -405,24 +408,38 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
       }
 
       <!-- Sensor tile grid — used by Combined + Sensors carousel pages,
-           and also by the pre-recording preview. Single source of truth. -->
+           and also by the pre-recording preview. Single source of truth.
+           Tiles whose required sensor isn't connected show a small
+           "No sensor" badge in place of the value, so the layout is
+           visible/configurable even before any sensor is paired. -->
       <ng-template #tilesTpl>
-        @if (connected().length > 0) {
-          <section
-            class="px-5 pt-5 pb-6 grid gap-4 mt-auto"
-            [class.grid-cols-2]="layout() === 'two-col'"
-            [class.grid-cols-1]="layout() === 'one-col'"
-          >
-            @for (tile of tiles(); track tile) {
-              @if (tile === 'speed-gauge') {
-                <mobile-speed-gauge [speedKmh]="speedKmh() ?? 0" />
-              } @else if (tile === 'speed-ring') {
-                <mobile-speed-ring [speedKmh]="speedKmh() ?? 0" />
-              } @else {
-                <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
-                  <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">
-                    {{ tileDef(tile).label }}
-                  </div>
+        <section
+          class="px-5 pt-5 pb-6 grid gap-4 mt-auto"
+          [class.grid-cols-2]="layout() === 'two-col'"
+          [class.grid-cols-1]="layout() === 'one-col'"
+        >
+          @for (tile of tiles(); track tile) {
+            @if (tile === 'speed-gauge') {
+              <mobile-speed-gauge [speedKmh]="speedKmh() ?? 0" />
+            } @else if (tile === 'speed-ring') {
+              <mobile-speed-ring [speedKmh]="speedKmh() ?? 0" />
+            } @else {
+              <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3 flex items-center gap-1.5">
+                  {{ tileDef(tile).label }}
+                  @if (tileSensorMissing(tile)) {
+                    <span
+                      class="material-symbols-outlined text-amber-400 text-[14px]"
+                      aria-label="Sensor not connected"
+                      title="Sensor not connected"
+                    >bluetooth_disabled</span>
+                  }
+                </div>
+                @if (tileSensorMissing(tile)) {
+                  <span class="font-grotesk text-label-caps text-amber-300/80 uppercase tracking-wider text-xs">
+                    No sensor
+                  </span>
+                } @else {
                   <div class="flex items-baseline gap-1.5">
                     <span
                       class="font-sora tabular-nums leading-none text-velo-lime"
@@ -435,11 +452,11 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
                       </span>
                     }
                   </div>
-                </div>
-              }
+                }
+              </div>
             }
-          </section>
-        }
+          }
+        </section>
       </ng-template>
 
       @if (!recording()) {
@@ -476,6 +493,28 @@ export class FeatureRecord {
 
   protected tileDef(t: RecordTile): TileDef {
     return TILE_DEFS[t];
+  }
+
+  /**
+   * True when a tile's underlying sensor isn't connected — the tile
+   * renders a small "No sensor" badge instead of "—". Only tiles with
+   * NO fallback data source warn:
+   *   - HR / Avg HR  → need an HRM
+   *   - Cadence      → needs a CSC sensor
+   * Speed/distance tiles never warn because GPS provides a fallback,
+   * and time tiles never depend on hardware.
+   */
+  protected tileSensorMissing(t: RecordTile): boolean {
+    const kinds = new Set(this.connected().flatMap((c) => c.subscribed));
+    switch (t) {
+      case 'hr':
+      case 'avg-hr':
+        return !kinds.has('HRM');
+      case 'cadence':
+        return !kinds.has('CSC');
+      default:
+        return false;
+    }
   }
 
   protected tileValue(t: RecordTile): string {
