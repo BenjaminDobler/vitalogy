@@ -39,9 +39,19 @@ export class UserIdMiddleware implements NestMiddleware {
 
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
     // /api/auth/* bypasses identity — signup/login produce the session,
-    // me reads it directly off the cookie, OAuth callbacks need to run
+    // /me reads it directly off the cookie, OAuth callbacks need to run
     // before there's a session at all.
-    if (req.path.startsWith('/auth/') || req.path === '/auth') {
+    //
+    // Use req.originalUrl because Nest's forRoutes('*') mounts the
+    // middleware per-route, which leaves req.path = '/' relative to
+    // the mount. originalUrl is always the full client-facing path.
+    const url = (req.originalUrl ?? req.url ?? '').split('?')[0];
+    if (
+      url.startsWith('/api/auth/') ||
+      url === '/api/auth' ||
+      url.startsWith('/auth/') ||
+      url === '/auth'
+    ) {
       next();
       return;
     }
