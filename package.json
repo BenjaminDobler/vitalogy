@@ -107,6 +107,7 @@
     "axios": "^1.6.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
+    "gridstack": "^12.6.0",
     "jose": "^6.2.3",
     "leaflet": "^1.9.4",
     "marked": "^18.0.5",

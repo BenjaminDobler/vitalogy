@@ -4,6 +4,12 @@
 
 @import 'leaflet/dist/leaflet.css';
 
+/* Gridstack core CSS — required for the ride-layouts editor at
+   /ride-views/:id/edit. Tailwind handles everything else; gridstack
+   only needs its own rules for drag/drop, resize handles, and the
+   absolutely-positioned grid items. */
+@import 'gridstack/dist/gridstack.min.css';
+
 /* === VeloPulse — mirrors apps/mobile === */
 
 html, body {

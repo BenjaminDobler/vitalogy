@@ -1,0 +1,457 @@
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  Input,
+  OnDestroy,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { Router, RouterLink } from '@angular/router';
+import { GridStack, type GridStackWidget } from 'gridstack';
+import type { RideView, WidgetPlacement, WidgetType } from 'data-models';
+import { RideViewsService } from '../ride-views.service';
+
+/**
+ * Palette of widgets the user can drag into the canvas. The `defaultW/H`
+ * controls the initial drop size; once on the canvas the user can drag
+ * to resize. `icon` is a Material Symbols name — kept readable in the
+ * editor since the actual data isn't available here.
+ */
+interface PaletteItem {
+  type: WidgetType;
+  label: string;
+  icon: string;
+  defaultW: number;
+  defaultH: number;
+}
+
+const PALETTE: PaletteItem[] = [
+  { type: 'hr', label: 'Heart rate', icon: 'favorite', defaultW: 1, defaultH: 1 },
+  { type: 'cadence', label: 'Cadence', icon: 'autorenew', defaultW: 1, defaultH: 1 },
+  { type: 'speed', label: 'Speed', icon: 'speed', defaultW: 1, defaultH: 1 },
+  { type: 'power', label: 'Power', icon: 'bolt', defaultW: 1, defaultH: 1 },
+  { type: 'distance', label: 'Distance', icon: 'straighten', defaultW: 1, defaultH: 1 },
+  { type: 'avg-hr', label: 'Avg HR', icon: 'monitor_heart', defaultW: 1, defaultH: 1 },
+  { type: 'avg-speed', label: 'Avg speed', icon: 'trending_up', defaultW: 1, defaultH: 1 },
+  { type: 'lap-time', label: 'Lap time', icon: 'timer', defaultW: 1, defaultH: 1 },
+  { type: 'total-time', label: 'Total time', icon: 'schedule', defaultW: 1, defaultH: 1 },
+  { type: 'speed-gauge', label: 'Speed gauge', icon: 'donut_small', defaultW: 2, defaultH: 2 },
+  { type: 'speed-ring', label: 'Speed ring', icon: 'data_usage', defaultW: 2, defaultH: 2 },
+  { type: 'map', label: 'Map', icon: 'map', defaultW: 2, defaultH: 2 },
+  { type: 'weather', label: 'Weather', icon: 'wb_sunny', defaultW: 1, defaultH: 1 },
+  { type: 'workout-coach', label: 'Workout coach', icon: 'flag', defaultW: 2, defaultH: 1 },
+];
+
+const ROW_OPTIONS = [2, 3, 4, 5, 6, 7, 8];
+const COL_OPTIONS = [2, 3, 4, 5, 6];
+
+/**
+ * Visual page builder for a single CUSTOM RideView. Uses gridstack to
+ * handle the drag/drop + resize gestures; we keep a TypeScript
+ * `widgetTypes` map keyed by gridstack id so we can round-trip back to
+ * `WidgetPlacement[]` on save (gridstack itself doesn't store custom
+ * fields per widget).
+ *
+ * Flow:
+ *   1. Resolve the view from RideViewsService on mount (refresh if not
+ *      already in the cache).
+ *   2. After view init, `GridStack.init()` on the canvas + `load()` the
+ *      existing placements.
+ *   3. `GridStack.setupDragIn` makes each palette item draggable into
+ *      the canvas. On drop we extract `data-widget-type` from the
+ *      cloned content div, assign a fresh id, and track the type.
+ *   4. Save → walk `grid.save(false)`, map each item to a
+ *      WidgetPlacement via the type map, PUT to the API, navigate back.
+ */
+@Component({
+  selector: 'lib-ride-view-editor',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [FormsModule, RouterLink],
+  template: `
+    <div class="flex items-center gap-3 mb-6 flex-wrap">
+      <a
+        routerLink="/ride-views"
+        class="w-10 h-10 rounded-full velo-glass hover:bg-white/10 flex items-center justify-center text-on-surface-variant"
+        aria-label="Back to layouts"
+      >
+        <span class="material-symbols-outlined">arrow_back</span>
+      </a>
+      <input
+        type="text"
+        [(ngModel)]="name"
+        placeholder="Layout name"
+        class="flex-1 min-w-[12rem] bg-transparent border-b border-white/15 focus:border-velo-lime outline-none font-sora text-xl text-on-surface py-2"
+      />
+      <label class="font-grotesk text-label-caps text-on-surface-variant uppercase text-xs flex items-center gap-2">
+        Cols
+        <select
+          [(ngModel)]="cols"
+          (change)="onColsChange()"
+          class="bg-white/5 border border-white/15 rounded px-2 py-1 text-on-surface font-grotesk"
+        >
+          @for (n of colOptions; track n) {
+            <option [ngValue]="n">{{ n }}</option>
+          }
+        </select>
+      </label>
+      <label class="font-grotesk text-label-caps text-on-surface-variant uppercase text-xs flex items-center gap-2">
+        Rows
+        <select
+          [(ngModel)]="rows"
+          class="bg-white/5 border border-white/15 rounded px-2 py-1 text-on-surface font-grotesk"
+        >
+          @for (n of rowOptions; track n) {
+            <option [ngValue]="n">{{ n }}</option>
+          }
+        </select>
+      </label>
+      <button
+        type="button"
+        (click)="onCancel()"
+        class="px-4 py-2 rounded-full velo-glass text-on-surface hover:bg-white/10 font-grotesk text-label-caps uppercase"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        (click)="onSave()"
+        [disabled]="saving()"
+        class="px-4 py-2 rounded-full bg-velo-lime text-velo-on-lime font-grotesk text-label-caps uppercase velo-shadow-lime hover:brightness-110 disabled:opacity-50"
+      >
+        {{ saving() ? 'Saving…' : 'Save' }}
+      </button>
+    </div>
+
+    @if (lastError(); as e) {
+      <p class="mb-3 text-sm text-rose-300 font-grotesk">{{ e }}</p>
+    }
+
+    <div class="grid grid-cols-[16rem_1fr] gap-6">
+      <!-- Palette -->
+      <aside class="velo-glass rounded-xl p-3 self-start sticky top-24">
+        <div class="font-grotesk text-label-caps text-on-surface-variant uppercase text-xs px-2 pb-2">
+          Widgets
+        </div>
+        <div class="space-y-2">
+          @for (p of palette; track p.type) {
+            <div
+              class="grid-stack-item palette-item"
+              [attr.gs-w]="p.defaultW"
+              [attr.gs-h]="p.defaultH"
+            >
+              <div
+                class="grid-stack-item-content velo-glass rounded-lg px-3 py-2 flex items-center gap-2 cursor-grab active:cursor-grabbing hover:bg-white/10"
+                [attr.data-widget-type]="p.type"
+              >
+                <span class="material-symbols-outlined text-velo-lime text-[20px]">
+                  {{ p.icon }}
+                </span>
+                <span class="font-grotesk text-sm text-on-surface">
+                  {{ p.label }}
+                </span>
+              </div>
+            </div>
+          }
+        </div>
+        <p class="text-xs text-on-surface-variant px-2 pt-3 mt-3 border-t border-white/5">
+          Drag any widget into the canvas. Drag corners to resize. Click
+          the × on a widget to remove it.
+        </p>
+      </aside>
+
+      <!-- Canvas -->
+      <div>
+        <div #canvas class="grid-stack velo-glass rounded-xl"></div>
+        <p class="text-xs text-on-surface-variant mt-2 font-grotesk uppercase tracking-wider">
+          Mobile preview · {{ cols }} × {{ rows }} grid
+        </p>
+      </div>
+    </div>
+  `,
+  styles: [
+    `
+      /* Editor-only theming on top of gridstack's stock CSS. */
+      :host ::ng-deep .grid-stack {
+        min-height: 24rem;
+        padding: 0.5rem;
+      }
+      :host ::ng-deep .grid-stack > .grid-stack-item > .grid-stack-item-content {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #c3f400;
+        font-family: 'Sora', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-size: 0.85rem;
+        position: relative;
+        overflow: hidden;
+      }
+      :host ::ng-deep .grid-stack > .grid-stack-item .widget-delete {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 22px;
+        height: 22px;
+        border-radius: 9999px;
+        background: rgba(0, 0, 0, 0.5);
+        color: #fda4af;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.15s;
+        font-size: 14px;
+        line-height: 1;
+        border: none;
+        padding: 0;
+      }
+      :host ::ng-deep .grid-stack > .grid-stack-item:hover .widget-delete {
+        opacity: 1;
+      }
+      :host ::ng-deep .palette-item {
+        position: relative !important;
+        width: 100% !important;
+        height: auto !important;
+      }
+      :host ::ng-deep .palette-item .grid-stack-item-content {
+        position: relative;
+        inset: auto;
+      }
+    `,
+  ],
+})
+export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
+  /** Route-bound RideView id (withComponentInputBinding on the router). */
+  @Input() id!: string;
+
+  private readonly svc = inject(RideViewsService);
+  private readonly router = inject(Router);
+  private readonly canvasEl =
+    viewChild.required<ElementRef<HTMLDivElement>>('canvas');
+
+  protected readonly palette = PALETTE;
+  protected readonly rowOptions = ROW_OPTIONS;
+  protected readonly colOptions = COL_OPTIONS;
+
+  /** Mutable form state. Initialized from the loaded RideView. */
+  protected name = '';
+  protected rows = 4;
+  protected cols = 4;
+
+  protected readonly saving = signal(false);
+  protected readonly lastError = signal<string | null>(null);
+
+  private grid: GridStack | null = null;
+  private view: RideView | null = null;
+  /**
+   * gridstack-id → WidgetType. Gridstack stores positions but not our
+   * widget-type metadata, so we keep a parallel map populated on add
+   * (palette drop) and on initial load, then read back during save.
+   */
+  private readonly widgetTypes = new Map<string, WidgetType>();
+
+  async ngAfterViewInit(): Promise<void> {
+    // The list endpoint is the only one mobile + web both hit, so we
+    // route through the same cache. Refresh once to be sure the row
+    // we're editing is present, then look it up.
+    if (this.svc.views().length === 0) {
+      await this.svc.refresh();
+    }
+    this.view = this.svc.views().find((v) => v.id === this.id) ?? null;
+    if (!this.view) {
+      this.lastError.set('Layout not found.');
+      return;
+    }
+    this.name = this.view.name;
+    this.rows = this.view.rows;
+    this.cols = this.view.cols;
+
+    this.initGrid();
+  }
+
+  ngOnDestroy(): void {
+    this.grid?.destroy(false);
+    this.grid = null;
+  }
+
+  private initGrid(): void {
+    const el = this.canvasEl().nativeElement;
+
+    this.grid = GridStack.init(
+      {
+        column: this.cols,
+        cellHeight: 88,
+        margin: 6,
+        float: true,
+        // Allow dropping items from the palette.
+        acceptWidgets: true,
+      },
+      el,
+    );
+
+    this.grid.on('added', (_event, items) => {
+      // Fires for both initial load (no DOM data-widget-type yet — set by
+      // load callback) AND palette drops. Differentiate by checking the
+      // DOM attribute and our existing-id map.
+      for (const item of items) {
+        const itemEl = item.el as HTMLElement | undefined;
+        if (!itemEl) continue;
+        const contentEl = itemEl.querySelector('.grid-stack-item-content') as
+          | HTMLElement
+          | null;
+        const type = contentEl?.dataset['widgetType'] as WidgetType | undefined;
+        if (!type) continue;
+
+        let id = item.id ?? itemEl.getAttribute('gs-id') ?? undefined;
+        if (!id || !this.widgetTypes.has(id)) {
+          id = id ?? generateWidgetId();
+          this.grid?.update(itemEl, { id });
+          this.widgetTypes.set(id, type);
+          this.decorateWidget(itemEl, type, id);
+        }
+      }
+    });
+
+    this.grid.on('removed', (_event, items) => {
+      for (const item of items) {
+        if (item.id) this.widgetTypes.delete(item.id);
+      }
+    });
+
+    // Load existing widgets.
+    if (this.view?.gridConfig && this.view.gridConfig.length > 0) {
+      const widgets: GridStackWidget[] = this.view.gridConfig.map((p) => ({
+        id: p.id,
+        x: p.x,
+        y: p.y,
+        w: p.w,
+        h: p.h,
+        content: this.renderWidgetContent(p.widget),
+      }));
+      this.view.gridConfig.forEach((p) =>
+        this.widgetTypes.set(p.id, p.widget),
+      );
+      this.grid.load(widgets);
+    }
+
+    // Wire palette items as drag sources. setupDragIn is static because
+    // it attaches a global listener — only call once per page load.
+    GridStack.setupDragIn('.palette-item', {
+      appendTo: 'body',
+      helper: 'clone',
+    });
+  }
+
+  /** Apply a 4-col redraw when the user changes cols. */
+  protected onColsChange(): void {
+    this.grid?.column(this.cols, 'compact');
+  }
+
+  protected async onSave(): Promise<void> {
+    if (!this.grid || !this.view) return;
+    this.saving.set(true);
+    this.lastError.set(null);
+    try {
+      const placements = this.collectPlacements();
+      await this.svc.update(this.view.id, {
+        name: this.name.trim() || 'Untitled layout',
+        rows: this.rows,
+        cols: this.cols,
+        gridConfig: placements,
+      });
+      await this.router.navigate(['/ride-views']);
+    } catch (err) {
+      this.lastError.set(err instanceof Error ? err.message : String(err));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  protected onCancel(): void {
+    void this.router.navigate(['/ride-views']);
+  }
+
+  private collectPlacements(): WidgetPlacement[] {
+    if (!this.grid) return [];
+    const raw = this.grid.save(false) as GridStackWidget[];
+    const out: WidgetPlacement[] = [];
+    for (const w of raw) {
+      const id = w.id;
+      if (!id) continue;
+      const type = this.widgetTypes.get(id);
+      if (!type) continue;
+      out.push({
+        id,
+        widget: type,
+        x: w.x ?? 0,
+        y: w.y ?? 0,
+        w: w.w ?? 1,
+        h: w.h ?? 1,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * After a widget lands on the canvas, swap its content from the
+   * palette's clone (icon + label) to the canvas variant (label + a
+   * delete button). Called from the `added` handler.
+   */
+  private decorateWidget(
+    itemEl: HTMLElement,
+    type: WidgetType,
+    id: string,
+  ): void {
+    const content = itemEl.querySelector('.grid-stack-item-content') as
+      | HTMLElement
+      | null;
+    if (!content) return;
+    content.innerHTML = this.renderWidgetContent(type);
+    content.setAttribute('data-widget-type', type);
+    content.setAttribute('data-widget-id', id);
+
+    // Attach a delete button (gridstack has no built-in widget removal UI).
+    if (!content.querySelector('.widget-delete')) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'widget-delete';
+      btn.setAttribute('aria-label', 'Remove widget');
+      btn.innerHTML = '✕';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.grid?.removeWidget(itemEl);
+      });
+      content.appendChild(btn);
+    }
+  }
+
+  /**
+   * HTML rendered inside each widget on the canvas. Static label + icon
+   * — the actual live data only exists on the phone. Keeps the editor
+   * pure DOM (no Angular bindings inside gridstack-managed elements).
+   */
+  private renderWidgetContent(type: WidgetType): string {
+    const p = PALETTE.find((x) => x.type === type);
+    if (!p) return type;
+    return `
+      <span class="material-symbols-outlined" style="font-size:24px;margin-right:6px;">${p.icon}</span>
+      <span>${p.label}</span>
+    `;
+  }
+}
+
+function generateWidgetId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `w_${crypto.randomUUID()}`;
+  }
+  return `w_${Math.random().toString(36).slice(2, 10)}`;
+}
