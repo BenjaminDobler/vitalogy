@@ -345,10 +345,15 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
           id != null ? this.widgetTypes.get(id) : undefined;
         let type: WidgetType | undefined = knownType;
         if (!type) {
-          const contentEl = itemEl.querySelector('.grid-stack-item-content') as
+          // The drag-in flow stashes <span data-widget-type="..."> inside
+          // the item's content (see setupDragIn). The custom helper
+          // doesn't survive the drop, so this is how we recover the
+          // type post-drop. Use a descendant selector — gridstack
+          // wraps content in .grid-stack-item-content.
+          const marker = itemEl.querySelector('[data-widget-type]') as
             | HTMLElement
             | null;
-          type = contentEl?.dataset['widgetType'] as WidgetType | undefined;
+          type = marker?.dataset['widgetType'] as WidgetType | undefined;
         }
         if (!type) continue;
 
@@ -409,22 +414,66 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
     // Wire palette items as drag sources. setupDragIn is static because
     // it attaches a global listener — only call once per page load.
     //
-    // The explicit `widgets` array keyed to PALETTE order is required:
-    // without it gridstack reads `gs-w/gs-h` off each palette item's
-    // rendered DOM, which (because palette items aren't inside any
-    // GridStack instance) defaults to the full column count. The array
-    // pins each item to its proper 1×1 / 2×2 size.
+    // Custom helper is the load-bearing part: gridstack measures the
+    // dragged helper's pixel size against the canvas column width to
+    // decide w/h on drop, and our palette items are ~256px wide (full
+    // sidebar) which kept landing as w=4 on a 4-col grid. The helper
+    // callback returns a small ghost sized to the *target* grid cell
+    // (cellHeight ≈ canvas cell width on a ~600px canvas) so gridstack
+    // measures it as 1×1 (or 2×2 for the larger widgets).
     //
     // We don't set `content` here — the `added` handler swaps in the
     // real Angular component once gridstack has created the cell DOM.
     // We do need a `data-widget-type` on the *palette item* so `added`
     // can recover the type from the cloned DOM.
+    const cellPx = 88;
     GridStack.setupDragIn(
       '.palette-item',
-      { appendTo: 'body', helper: 'clone' },
+      {
+        appendTo: 'body',
+        helper: (el: HTMLElement) => {
+          const sourceEl = el.closest('.palette-item') as HTMLElement | null;
+          const typeEl = sourceEl?.querySelector('[data-widget-type]') as
+            | HTMLElement
+            | null;
+          const type = typeEl?.dataset['widgetType'] as WidgetType | undefined;
+          const palette = type ? PALETTE.find((p) => p.type === type) : null;
+          const w = palette?.defaultW ?? 1;
+          const h = palette?.defaultH ?? 1;
+          const ghost = document.createElement('div');
+          ghost.className = 'palette-drag-helper';
+          // Mirror data-widget-type onto the helper so the `added`
+          // event handler (which inspects the cloned DOM) can still
+          // recover the widget type after drop.
+          if (type) ghost.dataset['widgetType'] = type;
+          ghost.style.cssText = `
+            width: ${w * cellPx}px;
+            height: ${h * cellPx}px;
+            background: rgba(195, 244, 0, 0.2);
+            border: 2px dashed #c3f400;
+            border-radius: 12px;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #c3f400;
+            font-family: 'Sora', sans-serif;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          `;
+          ghost.textContent = palette?.label ?? '';
+          return ghost;
+        },
+      },
       PALETTE.map((p) => ({
         w: p.defaultW,
         h: p.defaultH,
+        // Stash the widget type inside the content so the `added`
+        // handler can recover it after the custom helper is discarded.
+        // mountWidgetComponent clears this stub before mounting the
+        // real Angular component, so it's never visible to the user.
+        content: `<span data-widget-type="${p.type}" style="display:none"></span>`,
       })),
     );
   }
