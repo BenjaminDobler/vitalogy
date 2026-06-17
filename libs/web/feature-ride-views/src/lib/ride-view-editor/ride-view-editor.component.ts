@@ -341,8 +341,9 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
         let id = item.id ?? itemEl.getAttribute('gs-id') ?? undefined;
         // Type might already be tracked (initial load) or need to be
         // extracted from the cloned palette content (drag-in).
-        let type: WidgetType | undefined =
+        const knownType: WidgetType | undefined =
           id != null ? this.widgetTypes.get(id) : undefined;
+        let type: WidgetType | undefined = knownType;
         if (!type) {
           const contentEl = itemEl.querySelector('.grid-stack-item-content') as
             | HTMLElement
@@ -351,11 +352,32 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
         }
         if (!type) continue;
 
+        const isNewDrop = !knownType;
+
         if (!id) {
           id = generateWidgetId();
           this.grid?.update(itemEl, { id });
         }
         this.widgetTypes.set(id, type);
+
+        // Force the palette's default size on fresh drops. Gridstack's
+        // pixel-size fallback measures the dragged element against the
+        // canvas's column width and routinely picks the wrong w/h
+        // (with our 100%-width sidebar palette items, a drop on a 4-col
+        // grid was coming out 4-wide). The `widgets` array on
+        // setupDragIn is meant to override this but is unreliable, so
+        // we just snap to the intended size here. On initial load
+        // (knownType already in the map) we trust the persisted values.
+        if (isNewDrop) {
+          const palette = PALETTE.find((p) => p.type === type);
+          if (palette) {
+            this.grid?.update(itemEl, {
+              w: palette.defaultW,
+              h: palette.defaultH,
+            });
+          }
+        }
+
         this.mountWidgetComponent(itemEl, type, id);
       }
     });
