@@ -14,11 +14,11 @@ import { TokenService } from './token.service.js';
  *   3. X-User-Id header (legacy tier-1 trust-the-client tenancy, kept
  *      so existing mobile installs that haven't paired yet still work).
  *   4. DEFAULT_USER_ID fallback (dev convenience), unless AUTH_REQUIRED
- *      is set, in which case we 401.
- *
- * Paths beginning with /api/auth/ skip identity resolution entirely so
- * signup / login / OAuth callbacks / pair-redeem can complete without
- * a session already in place.
+ *      is set, in which case we 401 — except for /api/auth/* endpoints
+ *      that are allowed to run without a session (signup / login /
+ *      OAuth callbacks / pair-redeem). Those bypass the throw but
+ *      still pick up req.userId when a valid cookie IS present, so
+ *      endpoints like /auth/me and /auth/pair/create see the user.
  */
 
 export const DEFAULT_USER_ID = 'dev-user';
@@ -38,23 +38,20 @@ export class UserIdMiddleware implements NestMiddleware {
   ) {}
 
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
-    // /api/auth/* bypasses identity — signup/login produce the session,
-    // /me reads it directly off the cookie, OAuth callbacks need to run
-    // before there's a session at all.
-    //
     // Use req.originalUrl because Nest's forRoutes('*') mounts the
     // middleware per-route, which leaves req.path = '/' relative to
     // the mount. originalUrl is always the full client-facing path.
     const url = (req.originalUrl ?? req.url ?? '').split('?')[0];
-    if (
+    const isAuthPath =
       url.startsWith('/api/auth/') ||
       url === '/api/auth' ||
       url.startsWith('/auth/') ||
-      url === '/auth'
-    ) {
-      next();
-      return;
-    }
+      url === '/auth';
+
+    // Try to extract userId from any of the three sources. This runs
+    // even on /api/auth/* paths so the auth controllers that DO need
+    // identity (/auth/me, /auth/pair/create, /auth/strava/callback)
+    // can see it.
 
     const cookieToken = (req.cookies as Record<string, string> | undefined)?.[SESSION_COOKIE];
     if (cookieToken) {
@@ -102,6 +99,13 @@ export class UserIdMiddleware implements NestMiddleware {
       return;
     }
 
+    // No identity found. /api/auth/* endpoints can run without one
+    // (login/signup/OAuth start). Everyone else either gets the
+    // dev-user fallback (dev mode) or a 401 (AUTH_REQUIRED=true).
+    if (isAuthPath) {
+      next();
+      return;
+    }
     if (this.authRequired()) {
       throw new UnauthorizedException('Not authenticated');
     }

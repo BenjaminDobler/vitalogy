@@ -5,22 +5,18 @@ import {
   Param,
   Post,
   Query,
-  Req,
   Res,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import type { Request, Response } from 'express';
-import { DEFAULT_USER_ID, SESSION_COOKIE, TokenService, UserId } from 'auth';
+import type { Response } from 'express';
+import { DEFAULT_USER_ID, UserId } from 'auth';
 import { StravaService } from './strava.service.js';
 
 @Controller('auth/strava')
 export class StravaController {
   private readonly logger = new Logger(StravaController.name);
 
-  constructor(
-    private readonly strava: StravaService,
-    private readonly tokens: TokenService,
-  ) {}
+  constructor(private readonly strava: StravaService) {}
 
   /** Kicks off the OAuth flow by redirecting to Strava. */
   @Get('start')
@@ -34,13 +30,15 @@ export class StravaController {
   /**
    * Strava redirects here with ?code=... after the user approves. The user's
    * browser carries our session cookie because the redirect target is the
-   * same domain — so we identify the user from the JWT cookie / Bearer
-   * (UserIdMiddleware bypasses /api/auth/* so we have to read it manually
-   * here, mirroring how /auth/me does it).
+   * same domain, so UserIdMiddleware resolves it as usual — meaning we get
+   * the actual logged-in user via @UserId().
+   *
+   * Falls back to DEFAULT_USER_ID only when the dev-user identity is in
+   * effect (no AUTH_REQUIRED).
    */
   @Get('callback')
   async callback(
-    @Req() req: Request,
+    @UserId() userId: string | undefined,
     @Query('code') code: string,
     @Query('error') error: string | undefined,
     @Res() res: Response,
@@ -49,38 +47,14 @@ export class StravaController {
       res.status(400).send(`Strava auth failed: ${error ?? 'no code'}`);
       return;
     }
-    const userId = await this.resolveUserId(req);
     try {
-      await this.strava.handleCallback(userId, code);
+      await this.strava.handleCallback(userId ?? DEFAULT_USER_ID, code);
       res.redirect('/');
     } catch (err) {
       this.logger.error('Strava callback failed', err);
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).send(`Strava callback failed: ${message}`);
     }
-  }
-
-  /**
-   * Read the user's session JWT off the cookie (web) or Bearer header
-   * (mobile WebView). Falls back to DEFAULT_USER_ID only when the
-   * dev-user fallback is in effect — in prod with AUTH_REQUIRED=true
-   * the strava connect button is gated behind the auth guard anyway.
-   */
-  private async resolveUserId(req: Request): Promise<string> {
-    const cookie = (req.cookies as Record<string, string> | undefined)?.[SESSION_COOKIE];
-    if (cookie) {
-      const session = await this.tokens.verify(cookie);
-      if (session) return session.sub;
-    }
-    const authHeader = req.headers['authorization'];
-    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-      const bearer = authHeader.slice('Bearer '.length).trim();
-      if (bearer) {
-        const session = await this.tokens.verify(bearer);
-        if (session) return session.sub;
-      }
-    }
-    return DEFAULT_USER_ID;
   }
 }
 
