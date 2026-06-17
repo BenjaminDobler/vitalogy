@@ -1,10 +1,14 @@
 import {
   AfterViewInit,
+  ApplicationRef,
   ChangeDetectionStrategy,
   Component,
+  ComponentRef,
   ElementRef,
+  EnvironmentInjector,
   Input,
   OnDestroy,
+  createComponent,
   inject,
   signal,
   viewChild,
@@ -14,6 +18,7 @@ import { Router, RouterLink } from '@angular/router';
 import { GridStack, type GridStackWidget } from 'gridstack';
 import type { RideView, WidgetPlacement, WidgetType } from 'data-models';
 import { RideViewsService } from '../ride-views.service';
+import { WidgetPreviewComponent } from '../widget-preview/widget-preview.component';
 
 /**
  * Palette of widgets the user can drag into the canvas. The `defaultW/H`
@@ -174,34 +179,34 @@ const COL_OPTIONS = [2, 3, 4, 5, 6];
   `,
   styles: [
     `
-      /* Editor-only theming on top of gridstack's stock CSS. */
+      /* Editor-only theming on top of gridstack's stock CSS.
+         The actual widget *appearance* is owned by WidgetPreviewComponent
+         (matches the mobile look). These rules only handle the editor
+         chrome: container height, delete-button overlay, palette item
+         layout, and resize-handle visibility. */
       :host ::ng-deep .grid-stack {
-        min-height: 24rem;
+        min-height: 28rem;
         padding: 0.5rem;
       }
       :host ::ng-deep .grid-stack > .grid-stack-item > .grid-stack-item-content {
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 0.75rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #c3f400;
-        font-family: 'Sora', sans-serif;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        font-size: 0.85rem;
-        position: relative;
+        /* No background / borders — the inner WidgetPreviewComponent
+           paints its own (velo-glass). We just keep overflow tidy and
+           position the delete button against this box. */
+        background: transparent;
+        border: none;
+        padding: 0;
         overflow: hidden;
+        position: relative;
       }
       :host ::ng-deep .grid-stack > .grid-stack-item .widget-delete {
         position: absolute;
-        top: 4px;
-        right: 4px;
+        top: 6px;
+        right: 6px;
+        z-index: 5;
         width: 22px;
         height: 22px;
         border-radius: 9999px;
-        background: rgba(0, 0, 0, 0.5);
+        background: rgba(0, 0, 0, 0.6);
         color: #fda4af;
         display: flex;
         align-items: center;
@@ -211,16 +216,22 @@ const COL_OPTIONS = [2, 3, 4, 5, 6];
         transition: opacity 0.15s;
         font-size: 14px;
         line-height: 1;
-        border: none;
+        border: 1px solid rgba(255, 255, 255, 0.15);
         padding: 0;
       }
       :host ::ng-deep .grid-stack > .grid-stack-item:hover .widget-delete {
         opacity: 1;
       }
+      /* Palette items live OUTSIDE any GridStack instance, so the stock
+         gridstack CSS that absolutely positions .grid-stack-item would
+         collapse them. Force them to flow as normal block elements. */
       :host ::ng-deep .palette-item {
         position: relative !important;
         width: 100% !important;
         height: auto !important;
+        transform: none !important;
+        top: auto !important;
+        left: auto !important;
       }
       :host ::ng-deep .palette-item .grid-stack-item-content {
         position: relative;
@@ -235,6 +246,8 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
 
   private readonly svc = inject(RideViewsService);
   private readonly router = inject(Router);
+  private readonly appRef = inject(ApplicationRef);
+  private readonly envInjector = inject(EnvironmentInjector);
   private readonly canvasEl =
     viewChild.required<ElementRef<HTMLDivElement>>('canvas');
 
@@ -259,6 +272,18 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
    */
   private readonly widgetTypes = new Map<string, WidgetType>();
 
+  /**
+   * gridstack-id → WidgetPreview component ref. We use createComponent
+   * to instantiate the real Angular widget into each cell so the
+   * editor's preview is pixel-identical to what mobile renders. The
+   * map tracks lifetime so we can destroy() each one when its widget
+   * is removed (or the editor itself goes away).
+   */
+  private readonly widgetComponents = new Map<
+    string,
+    ComponentRef<WidgetPreviewComponent>
+  >();
+
   async ngAfterViewInit(): Promise<void> {
     // The list endpoint is the only one mobile + web both hit, so we
     // route through the same cache. Refresh once to be sure the row
@@ -279,6 +304,13 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // Destroy every preview component instance we created so their
+    // change-detection registrations don't leak.
+    for (const ref of this.widgetComponents.values()) {
+      this.appRef.detachView(ref.hostView);
+      ref.destroy();
+    }
+    this.widgetComponents.clear();
     this.grid?.destroy(false);
     this.grid = null;
   }
@@ -299,31 +331,38 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
     );
 
     this.grid.on('added', (_event, items) => {
-      // Fires for both initial load (no DOM data-widget-type yet — set by
-      // load callback) AND palette drops. Differentiate by checking the
-      // DOM attribute and our existing-id map.
+      // Fires for both initial load (the items already carry their id
+      // and type from `widgetTypes`) AND palette drops (where we read
+      // the type from the cloned `data-widget-type` attribute).
       for (const item of items) {
         const itemEl = item.el as HTMLElement | undefined;
         if (!itemEl) continue;
-        const contentEl = itemEl.querySelector('.grid-stack-item-content') as
-          | HTMLElement
-          | null;
-        const type = contentEl?.dataset['widgetType'] as WidgetType | undefined;
-        if (!type) continue;
 
         let id = item.id ?? itemEl.getAttribute('gs-id') ?? undefined;
-        if (!id || !this.widgetTypes.has(id)) {
-          id = id ?? generateWidgetId();
-          this.grid?.update(itemEl, { id });
-          this.widgetTypes.set(id, type);
-          this.decorateWidget(itemEl, type, id);
+        // Type might already be tracked (initial load) or need to be
+        // extracted from the cloned palette content (drag-in).
+        let type: WidgetType | undefined =
+          id != null ? this.widgetTypes.get(id) : undefined;
+        if (!type) {
+          const contentEl = itemEl.querySelector('.grid-stack-item-content') as
+            | HTMLElement
+            | null;
+          type = contentEl?.dataset['widgetType'] as WidgetType | undefined;
         }
+        if (!type) continue;
+
+        if (!id) {
+          id = generateWidgetId();
+          this.grid?.update(itemEl, { id });
+        }
+        this.widgetTypes.set(id, type);
+        this.mountWidgetComponent(itemEl, type, id);
       }
     });
 
     this.grid.on('removed', (_event, items) => {
       for (const item of items) {
-        if (item.id) this.widgetTypes.delete(item.id);
+        if (item.id) this.unmountWidgetComponent(item.id);
       }
     });
 
@@ -335,7 +374,9 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
         y: p.y,
         w: p.w,
         h: p.h,
-        content: this.renderWidgetContent(p.widget),
+        // Content stays empty — the `added` handler instantiates the
+        // real WidgetPreviewComponent into the cell after gridstack
+        // creates the .grid-stack-item-content div.
       }));
       this.view.gridConfig.forEach((p) =>
         this.widgetTypes.set(p.id, p.widget),
@@ -345,10 +386,25 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
 
     // Wire palette items as drag sources. setupDragIn is static because
     // it attaches a global listener — only call once per page load.
-    GridStack.setupDragIn('.palette-item', {
-      appendTo: 'body',
-      helper: 'clone',
-    });
+    //
+    // The explicit `widgets` array keyed to PALETTE order is required:
+    // without it gridstack reads `gs-w/gs-h` off each palette item's
+    // rendered DOM, which (because palette items aren't inside any
+    // GridStack instance) defaults to the full column count. The array
+    // pins each item to its proper 1×1 / 2×2 size.
+    //
+    // We don't set `content` here — the `added` handler swaps in the
+    // real Angular component once gridstack has created the cell DOM.
+    // We do need a `data-widget-type` on the *palette item* so `added`
+    // can recover the type from the cloned DOM.
+    GridStack.setupDragIn(
+      '.palette-item',
+      { appendTo: 'body', helper: 'clone' },
+      PALETTE.map((p) => ({
+        w: p.defaultW,
+        h: p.defaultH,
+      })),
+    );
   }
 
   /** Apply a 4-col redraw when the user changes cols. */
@@ -402,11 +458,15 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * After a widget lands on the canvas, swap its content from the
-   * palette's clone (icon + label) to the canvas variant (label + a
-   * delete button). Called from the `added` handler.
+   * Instantiate a `WidgetPreviewComponent` for this cell and attach its
+   * DOM into the gridstack-managed content div. We use Angular's
+   * `createComponent()` so it's a real component instance — change
+   * detection runs, signals work, and the output looks pixel-identical
+   * to what the mobile app will render at ride time.
+   *
+   * Idempotent per id: re-mounting destroys the prior instance first.
    */
-  private decorateWidget(
+  private mountWidgetComponent(
     itemEl: HTMLElement,
     type: WidgetType,
     id: string,
@@ -415,37 +475,45 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
       | HTMLElement
       | null;
     if (!content) return;
-    content.innerHTML = this.renderWidgetContent(type);
-    content.setAttribute('data-widget-type', type);
-    content.setAttribute('data-widget-id', id);
 
-    // Attach a delete button (gridstack has no built-in widget removal UI).
-    if (!content.querySelector('.widget-delete')) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'widget-delete';
-      btn.setAttribute('aria-label', 'Remove widget');
-      btn.innerHTML = '✕';
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.grid?.removeWidget(itemEl);
-      });
-      content.appendChild(btn);
-    }
+    // Clear anything gridstack put there (e.g. cloned palette HTML) so
+    // we own the cell exclusively.
+    while (content.firstChild) content.removeChild(content.firstChild);
+
+    // Destroy any previous instance (re-mounts can happen if gridstack
+    // re-emits `added` for a load or move that touches the cell).
+    this.unmountWidgetComponent(id);
+
+    const ref = createComponent(WidgetPreviewComponent, {
+      environmentInjector: this.envInjector,
+    });
+    ref.setInput('widget', type);
+    this.appRef.attachView(ref.hostView);
+    content.appendChild(ref.location.nativeElement);
+    this.widgetComponents.set(id, ref);
+
+    // Hover-revealed delete button. Lives outside the Angular component
+    // tree so removing a widget doesn't need a CD round-trip — it's
+    // immediate DOM + gridstack API.
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'widget-delete';
+    btn.setAttribute('aria-label', 'Remove widget');
+    btn.innerHTML = '✕';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.grid?.removeWidget(itemEl);
+    });
+    content.appendChild(btn);
   }
 
-  /**
-   * HTML rendered inside each widget on the canvas. Static label + icon
-   * — the actual live data only exists on the phone. Keeps the editor
-   * pure DOM (no Angular bindings inside gridstack-managed elements).
-   */
-  private renderWidgetContent(type: WidgetType): string {
-    const p = PALETTE.find((x) => x.type === type);
-    if (!p) return type;
-    return `
-      <span class="material-symbols-outlined" style="font-size:24px;margin-right:6px;">${p.icon}</span>
-      <span>${p.label}</span>
-    `;
+  private unmountWidgetComponent(id: string): void {
+    const ref = this.widgetComponents.get(id);
+    if (!ref) return;
+    this.appRef.detachView(ref.hostView);
+    ref.destroy();
+    this.widgetComponents.delete(id);
+    this.widgetTypes.delete(id);
   }
 }
 
