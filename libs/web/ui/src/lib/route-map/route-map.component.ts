@@ -42,8 +42,15 @@ export class RouteMapComponent {
 
       // Dynamic import keeps Leaflet out of any bundle that doesn't render
       // a map (e.g. the eager shell chunk).
-      import('leaflet').then((L) => {
+      //
+      // Leaflet is a CommonJS module. In Angular's production esbuild,
+      // dynamic-import returns the module namespace (.default property
+      // wraps the actual Leaflet API). In dev mode the loader unwrapped
+      // it silently; prod does not — so resolve both shapes here.
+      import('leaflet').then((mod) => {
         if (cancelled) return;
+        const L = ((mod as unknown as { default?: typeof mod }).default ??
+          mod) as typeof mod;
         map = L.map(ref.nativeElement);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '© OpenStreetMap contributors',

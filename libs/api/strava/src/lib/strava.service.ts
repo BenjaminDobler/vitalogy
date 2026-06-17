@@ -64,18 +64,25 @@ export class StravaService {
       update: {},
     });
 
+    // Key the upsert on athleteId — that's the immutable Strava identity
+    // for this connection. Keying on userId would create a duplicate-row
+    // / unique-constraint conflict whenever the user re-authorizes (or
+    // when a row got created against a different user during the
+    // pre-auth dev-user days). userId is updated in the UPDATE branch so
+    // re-linking a Strava account to a different vitalogy user works.
+    const athleteId = BigInt(data.athlete.id);
     await this.prisma.stravaAccount.upsert({
-      where: { userId },
+      where: { athleteId },
       create: {
         userId,
-        athleteId: BigInt(data.athlete.id),
+        athleteId,
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
         expiresAt: new Date(data.expires_at * 1000),
         scope: data.scope ?? DEFAULT_SCOPE,
       },
       update: {
-        athleteId: BigInt(data.athlete.id),
+        userId,
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
         expiresAt: new Date(data.expires_at * 1000),
