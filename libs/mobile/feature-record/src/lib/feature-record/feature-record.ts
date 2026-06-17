@@ -1,5 +1,12 @@
-import { Component, computed, inject, signal } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import {
+  Component,
+  ElementRef,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { BleManager } from 'ble';
 // KnownSensorStore is no longer referenced here — sensor management moved
@@ -44,6 +51,7 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
   selector: 'lib-feature-record',
   imports: [
     DecimalPipe,
+    NgTemplateOutlet,
     RouterLink,
     SpeedGaugeComponent,
     SpeedRingComponent,
@@ -54,21 +62,31 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
   ],
   template: `
     <div class="min-h-screen velo-carbon text-on-surface flex flex-col font-inter relative" [class.pb-24]="!recording()">
-      <!-- VITALOGY brand bar — hamburger / italic logo / cog -->
+      <!-- VITALOGY brand bar — hamburger / italic logo (with RIDING pill) / cog.
+           Hamburger stays visible during recording so the rider can pop the
+           drawer and navigate to Activities/Settings; the recording continues
+           in the background (RecordingService is provided at root). -->
       <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between border-b border-white/5">
-        @if (!recording()) {
-          <button
-            type="button"
-            (click)="menuOpen.set(true)"
-            class="w-10 h-10 rounded-full velo-glass flex items-center justify-center hover:bg-white/10"
-            aria-label="Open menu"
-          >
-            <span class="material-symbols-outlined text-on-surface text-[20px]">menu</span>
-          </button>
-        } @else {
-          <span class="w-10"></span>
-        }
-        <h1 class="font-sora italic uppercase tracking-tighter text-2xl text-velo-lime">VITALOGY</h1>
+        <button
+          type="button"
+          (click)="menuOpen.set(true)"
+          class="w-10 h-10 rounded-full velo-glass flex items-center justify-center hover:bg-white/10"
+          aria-label="Open menu"
+        >
+          <span class="material-symbols-outlined text-on-surface text-[20px]">menu</span>
+        </button>
+        <div class="flex items-center gap-2 min-w-0">
+          @if (recording()) {
+            <span
+              class="font-grotesk text-label-caps uppercase tracking-wider text-[10px] px-2 py-0.5 rounded-full bg-velo-lime/15 text-velo-lime border border-velo-lime/40 inline-flex items-center gap-1 whitespace-nowrap"
+              aria-label="Ride in progress"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-velo-lime velo-pulse"></span>
+              RIDING
+            </span>
+          }
+          <h1 class="font-sora italic uppercase tracking-tighter text-2xl text-velo-lime">VITALOGY</h1>
+        </div>
         @if (!recording()) {
           <a
             routerLink="/settings"
@@ -181,14 +199,6 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
         <mobile-workout-picker (select)="startRecordingWith($event)" />
       }
 
-      @if (recording() && workoutContext()) {
-        <mobile-workout-overlay
-          [ctx]="workoutContext()"
-          (next)="skipInterval()"
-          (previous)="previousInterval()"
-        />
-      }
-
       @if (countdownValue() != null) {
         <mobile-countdown-overlay
           [value]="countdownValue()!"
@@ -219,156 +229,219 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
         </div>
       }
 
-      @if (connected().length > 0) {
-        <section
-          class="px-5 pt-5 pb-6 grid gap-4 mt-auto"
-          [class.grid-cols-2]="layout() === 'two-col'"
-          [class.grid-cols-1]="layout() === 'one-col'"
-        >
-          @for (tile of tiles(); track tile) {
-            @if (tile === 'speed-gauge') {
-              <mobile-speed-gauge [speedKmh]="speedKmh() ?? 0" />
-            } @else if (tile === 'speed-ring') {
-              <mobile-speed-ring [speedKmh]="speedKmh() ?? 0" />
-            } @else {
-              <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
-                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">
-                  {{ tileDef(tile).label }}
-                </div>
-                <div class="flex items-baseline gap-1.5">
-                  <span
-                    class="font-sora tabular-nums leading-none text-velo-lime"
-                    [class.text-metric-lg]="layout() === 'two-col'"
-                    [class.text-metric-xl]="layout() === 'one-col'"
-                  >{{ tileValue(tile) }}</span>
-                  @if (tileDef(tile).unit) {
-                    <span class="font-grotesk text-mono-data text-on-surface-variant uppercase">
-                      {{ tileDef(tile).unit }}
-                    </span>
-                  }
-                </div>
-              </div>
-            }
-          }
-        </section>
-
-        @if (recording()) {
-          <div class="px-5 pb-2 text-center font-grotesk text-mono-data tabular-nums uppercase flex items-center justify-center gap-2">
-            @if (paused()) {
-              <span class="text-velo-lime font-semibold flex items-center gap-1">
-                <span class="material-symbols-outlined filled text-[18px]">pause_circle</span>
-                PAUSED
-              </span>
-              <span class="text-on-surface-variant">·</span>
-            }
-            <span class="text-on-surface-variant">
-              Total {{ durationText() }}
-              @if (stats(); as st) {
-                <span class="opacity-50">
-                  · {{ formatDur(st.elapsedSec) }} elapsed
-                </span>
-              }
-            </span>
+      @if (recording()) {
+        @if (workoutContext()) {
+          <!-- Swipeable carousel: Combined → Workout → Sensors.
+               Uses CSS scroll-snap so the gesture is native (no JS swipe
+               handling). onCarouselScroll syncs the active dot. -->
+          <div
+            #carouselEl
+            (scroll)="onCarouselScroll($event)"
+            class="flex-1 min-h-0 overflow-x-auto overflow-y-hidden snap-x snap-mandatory flex velo-no-scrollbar"
+          >
+            <!-- Page 0 — Combined: compact workout strip + sensor tiles.
+                 Each page is independently y-scrollable so a long tile
+                 list on a small phone doesn't get clipped. -->
+            <div class="w-full shrink-0 snap-center overflow-y-auto velo-no-scrollbar pt-3">
+              <mobile-workout-overlay
+                [ctx]="workoutContext()"
+                [compact]="true"
+              />
+              <ng-container *ngTemplateOutlet="tilesTpl"></ng-container>
+            </div>
+            <!-- Page 1 — Workout focus: full overlay with Back/Skip. -->
+            <div class="w-full shrink-0 snap-center overflow-y-auto velo-no-scrollbar flex flex-col justify-center pt-3">
+              <mobile-workout-overlay
+                [ctx]="workoutContext()"
+                [compact]="false"
+                (next)="skipInterval()"
+                (previous)="previousInterval()"
+              />
+            </div>
+            <!-- Page 2 — Sensors only: original tile-only layout. -->
+            <div class="w-full shrink-0 snap-center overflow-y-auto velo-no-scrollbar pt-3">
+              <ng-container *ngTemplateOutlet="tilesTpl"></ng-container>
+            </div>
           </div>
 
-          @if (lapToast(); as toast) {
-            <div
-              class="mx-5 mb-3 px-3 py-2 rounded-xl velo-glass text-center tabular-nums"
-              [class.velo-shadow-lime]="toast.isNewBest"
+          <!-- Page indicator dots. Tappable for keyboard / one-handed use. -->
+          <div class="flex items-center justify-center gap-2 py-2" role="tablist" aria-label="Ride view">
+            @for (p of carouselPages; track p.index) {
+              <button
+                type="button"
+                role="tab"
+                [attr.aria-selected]="carouselPage() === p.index"
+                [attr.aria-label]="p.label + ' view'"
+                (click)="scrollToPage(p.index)"
+                class="h-2 rounded-full transition-all"
+                [class.w-6]="carouselPage() === p.index"
+                [class.bg-velo-lime]="carouselPage() === p.index"
+                [class.w-2]="carouselPage() !== p.index"
+                [class.bg-white\\/20]="carouselPage() !== p.index"
+              ></button>
+            }
+          </div>
+        } @else {
+          <!-- No workout picked: just the tile grid. -->
+          <ng-container *ngTemplateOutlet="tilesTpl"></ng-container>
+        }
+
+        <div class="px-5 pb-2 text-center font-grotesk text-mono-data tabular-nums uppercase flex items-center justify-center gap-2">
+          @if (paused()) {
+            <span class="text-velo-lime font-semibold flex items-center gap-1">
+              <span class="material-symbols-outlined filled text-[18px]">pause_circle</span>
+              PAUSED
+            </span>
+            <span class="text-on-surface-variant">·</span>
+          }
+          <span class="text-on-surface-variant">
+            Total {{ durationText() }}
+            @if (stats(); as st) {
+              <span class="opacity-50">
+                · {{ formatDur(st.elapsedSec) }} elapsed
+              </span>
+            }
+          </span>
+        </div>
+
+        @if (lapToast(); as toast) {
+          <div
+            class="mx-5 mb-3 px-3 py-2 rounded-xl velo-glass text-center tabular-nums"
+            [class.velo-shadow-lime]="toast.isNewBest"
+          >
+            @if (toast.isNewBest) {
+              <div class="font-grotesk text-label-caps text-velo-lime uppercase">
+                🏆 New best lap!
+              </div>
+            }
+            <div class="font-grotesk text-mono-data uppercase mt-0.5"
+              [class.text-velo-lime]="toast.isNewBest"
+              [class.text-on-surface]="!toast.isNewBest"
             >
-              @if (toast.isNewBest) {
-                <div class="font-grotesk text-label-caps text-velo-lime uppercase">
-                  🏆 New best lap!
+              Lap {{ toast.index }}: {{ formatDur(toast.durationSec) }}
+              @if (toast.deltaSec != null) {
+                ·
+                <span
+                  [class.text-velo-lime]="toast.deltaSec < 0"
+                  [class.text-rose-300]="toast.deltaSec > 0"
+                >
+                  {{ toast.deltaSec > 0 ? '+' : '' }}{{ toast.deltaSec }}s vs best
+                </span>
+              }
+            </div>
+          </div>
+        }
+
+        @if (currentLapStats(); as ls) {
+          <div class="mx-5 mb-3 px-4 py-3 rounded-xl velo-glass grid grid-cols-4 gap-2 text-center tabular-nums">
+            <div>
+              <div class="font-grotesk text-label-caps text-velo-lime uppercase">
+                Lap {{ currentLap() }}
+              </div>
+              <div class="font-sora text-sm font-semibold mt-1">{{ lapDurationText() }}</div>
+              @if (lapDelta(); as d) {
+                <div
+                  class="font-grotesk text-[10px] tabular-nums uppercase"
+                  [class.text-velo-lime]="d.meters >= 0"
+                  [class.text-rose-300]="d.meters < 0"
+                >
+                  {{ d.meters > 0 ? '+' : '' }}{{ d.meters }} m vs L{{ d.referenceLap }}
                 </div>
               }
-              <div class="font-grotesk text-mono-data uppercase mt-0.5"
-                [class.text-velo-lime]="toast.isNewBest"
-                [class.text-on-surface]="!toast.isNewBest"
-              >
-                Lap {{ toast.index }}: {{ formatDur(toast.durationSec) }}
-                @if (toast.deltaSec != null) {
-                  ·
-                  <span
-                    [class.text-velo-lime]="toast.deltaSec < 0"
-                    [class.text-rose-300]="toast.deltaSec > 0"
-                  >
-                    {{ toast.deltaSec > 0 ? '+' : '' }}{{ toast.deltaSec }}s vs best
-                  </span>
-                }
+            </div>
+            <div>
+              <div class="font-grotesk text-label-caps text-on-surface-variant uppercase">Dist</div>
+              <div class="font-sora text-sm font-semibold mt-1">
+                {{ ls.distanceM / 1000 | number: '1.2-2' }}
+                <span class="text-xs font-normal text-on-surface-variant">km</span>
               </div>
             </div>
-          }
-
-          @if (currentLapStats(); as ls) {
-            <div class="mx-5 mb-3 px-4 py-3 rounded-xl velo-glass grid grid-cols-4 gap-2 text-center tabular-nums">
-              <div>
-                <div class="font-grotesk text-label-caps text-velo-lime uppercase">
-                  Lap {{ currentLap() }}
-                </div>
-                <div class="font-sora text-sm font-semibold mt-1">{{ lapDurationText() }}</div>
-                @if (lapDelta(); as d) {
-                  <div
-                    class="font-grotesk text-[10px] tabular-nums uppercase"
-                    [class.text-velo-lime]="d.meters >= 0"
-                    [class.text-rose-300]="d.meters < 0"
-                  >
-                    {{ d.meters > 0 ? '+' : '' }}{{ d.meters }} m vs L{{ d.referenceLap }}
-                  </div>
-                }
-              </div>
-              <div>
-                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase">Dist</div>
-                <div class="font-sora text-sm font-semibold mt-1">
-                  {{ ls.distanceM / 1000 | number: '1.2-2' }}
-                  <span class="text-xs font-normal text-on-surface-variant">km</span>
-                </div>
-              </div>
-              <div>
-                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase">Avg HR</div>
-                <div class="font-sora text-sm font-semibold mt-1">
-                  {{ ls.avgHr != null ? (ls.avgHr | number: '1.0-0') : '—' }}
-                </div>
-              </div>
-              <div>
-                <div class="font-grotesk text-label-caps text-on-surface-variant uppercase">Avg cad</div>
-                <div class="font-sora text-sm font-semibold mt-1">
-                  {{ ls.avgCadenceRpm != null ? (ls.avgCadenceRpm | number: '1.0-0') : '—' }}
-                </div>
+            <div>
+              <div class="font-grotesk text-label-caps text-on-surface-variant uppercase">Avg HR</div>
+              <div class="font-sora text-sm font-semibold mt-1">
+                {{ ls.avgHr != null ? (ls.avgHr | number: '1.0-0') : '—' }}
               </div>
             </div>
-          }
+            <div>
+              <div class="font-grotesk text-label-caps text-on-surface-variant uppercase">Avg cad</div>
+              <div class="font-sora text-sm font-semibold mt-1">
+                {{ ls.avgCadenceRpm != null ? (ls.avgCadenceRpm | number: '1.0-0') : '—' }}
+              </div>
+            </div>
+          </div>
         }
 
         <div class="px-5 pb-safe-8 sticky bottom-0 bg-gradient-to-t from-surface-dim via-surface-dim/80 to-transparent pt-6">
-          @if (!recording()) {
+          <div class="flex gap-3">
             <button
-              (click)="startRecording()"
-              [disabled]="connected().length === 0"
-              class="w-full py-5 rounded-full bg-velo-lime text-velo-on-lime font-sora italic uppercase tracking-tighter text-2xl velo-shadow-lime flex items-center justify-center gap-3 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+              (click)="markLap()"
+              class="flex-1 py-4 rounded-full velo-glass text-on-surface font-grotesk text-label-caps uppercase flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98] transition-all"
             >
-              <span class="material-symbols-outlined filled text-[28px]">play_arrow</span>
-              Start Ride
+              <span class="material-symbols-outlined text-[20px]">flag</span>
+              Lap
             </button>
-          } @else {
-            <div class="flex gap-3">
-              <button
-                (click)="markLap()"
-                class="flex-1 py-4 rounded-full velo-glass text-on-surface font-grotesk text-label-caps uppercase flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98] transition-all"
-              >
-                <span class="material-symbols-outlined text-[20px]">flag</span>
-                Lap
-              </button>
-              <button
-                (click)="stopRecording()"
-                class="flex-1 py-4 rounded-full bg-velo-lime text-velo-on-lime font-grotesk text-label-caps uppercase velo-shadow-lime flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.98] transition-all"
-              >
-                <span class="material-symbols-outlined filled text-[20px]">stop_circle</span>
-                Stop
-              </button>
-            </div>
-          }
+            <button
+              (click)="stopRecording()"
+              class="flex-1 py-4 rounded-full bg-velo-lime text-velo-on-lime font-grotesk text-label-caps uppercase velo-shadow-lime flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.98] transition-all"
+            >
+              <span class="material-symbols-outlined filled text-[20px]">stop_circle</span>
+              Stop
+            </button>
+          </div>
+        </div>
+      } @else if (connected().length > 0) {
+        <ng-container *ngTemplateOutlet="tilesTpl"></ng-container>
+
+        <div class="px-5 pb-safe-8 sticky bottom-0 bg-gradient-to-t from-surface-dim via-surface-dim/80 to-transparent pt-6">
+          <button
+            (click)="startRecording()"
+            [disabled]="connected().length === 0"
+            class="w-full py-5 rounded-full bg-velo-lime text-velo-on-lime font-sora italic uppercase tracking-tighter text-2xl velo-shadow-lime flex items-center justify-center gap-3 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+          >
+            <span class="material-symbols-outlined filled text-[28px]">play_arrow</span>
+            Start Ride
+          </button>
         </div>
       }
+
+      <!-- Sensor tile grid — used by Combined + Sensors carousel pages,
+           and also by the pre-recording preview. Single source of truth. -->
+      <ng-template #tilesTpl>
+        @if (connected().length > 0) {
+          <section
+            class="px-5 pt-5 pb-6 grid gap-4 mt-auto"
+            [class.grid-cols-2]="layout() === 'two-col'"
+            [class.grid-cols-1]="layout() === 'one-col'"
+          >
+            @for (tile of tiles(); track tile) {
+              @if (tile === 'speed-gauge') {
+                <mobile-speed-gauge [speedKmh]="speedKmh() ?? 0" />
+              } @else if (tile === 'speed-ring') {
+                <mobile-speed-ring [speedKmh]="speedKmh() ?? 0" />
+              } @else {
+                <div class="velo-glass rounded-xl p-6 flex flex-col items-start">
+                  <div class="font-grotesk text-label-caps text-on-surface-variant uppercase mb-3">
+                    {{ tileDef(tile).label }}
+                  </div>
+                  <div class="flex items-baseline gap-1.5">
+                    <span
+                      class="font-sora tabular-nums leading-none text-velo-lime"
+                      [class.text-metric-lg]="layout() === 'two-col'"
+                      [class.text-metric-xl]="layout() === 'one-col'"
+                    >{{ tileValue(tile) }}</span>
+                    @if (tileDef(tile).unit) {
+                      <span class="font-grotesk text-mono-data text-on-surface-variant uppercase">
+                        {{ tileDef(tile).unit }}
+                      </span>
+                    }
+                  </div>
+                </div>
+              }
+            }
+          </section>
+        }
+      </ng-template>
+
       @if (!recording()) {
         <mobile-bottom-nav />
       }
@@ -442,6 +515,35 @@ export class FeatureRecord {
   protected readonly uploadError = this.uploadQueue.lastError;
   protected readonly errorMsg = signal<string | null>(null);
   protected readonly menuOpen = signal(false);
+
+  /**
+   * Active page in the ride-screen swipe carousel (workout-mode only).
+   * 0 = Combined, 1 = Workout focus, 2 = Sensors only. Synced from the
+   * scroll-snap container's scrollLeft so the dot indicator stays
+   * accurate whether the rider swiped or tapped.
+   */
+  protected readonly carouselPage = signal(0);
+  protected readonly carouselPages = [
+    { index: 0, label: 'Combined' },
+    { index: 1, label: 'Workout' },
+    { index: 2, label: 'Sensors' },
+  ] as const;
+  private readonly carouselEl =
+    viewChild<ElementRef<HTMLDivElement>>('carouselEl');
+
+  protected onCarouselScroll(e: Event): void {
+    const el = e.target as HTMLElement;
+    const w = el.clientWidth;
+    if (w === 0) return;
+    const page = Math.round(el.scrollLeft / w);
+    if (page !== this.carouselPage()) this.carouselPage.set(page);
+  }
+
+  protected scrollToPage(i: number): void {
+    const el = this.carouselEl()?.nativeElement;
+    if (!el) return;
+    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
+  }
 
   protected readonly recording = computed(() => this.recordingService.session() != null);
   protected readonly latest = this.recordingService.latest;

@@ -28,7 +28,13 @@ import type { WorkoutLiveContext } from 'recording';
   template: `
     @if (ctx(); as c) {
       <div
-        class="rounded-2xl p-4 mx-4 mb-4 border-2"
+        class="rounded-2xl border-2"
+        [class.p-3]="compact()"
+        [class.mx-3]="compact()"
+        [class.mb-2]="compact()"
+        [class.p-4]="!compact()"
+        [class.mx-4]="!compact()"
+        [class.mb-4]="!compact()"
         [class.bg-velo-lime\\/15]="c.status === 'in'"
         [class.border-velo-lime]="c.status === 'in'"
         [class.bg-orange-500\\/15]="c.status === 'below'"
@@ -38,19 +44,35 @@ import type { WorkoutLiveContext } from 'recording';
         [class.bg-white\\/5]="c.status === 'unknown' || c.done"
         [class.border-white\\/15]="c.status === 'unknown' || c.done"
       >
-        <div class="flex items-baseline justify-between mb-2">
+        <div
+          class="flex items-baseline justify-between"
+          [class.mb-1]="compact()"
+          [class.mb-2]="!compact()"
+        >
           <span class="font-grotesk text-label-caps text-on-surface-variant uppercase text-[10px] tracking-wider">
             {{ c.done ? 'Workout complete' : 'Interval ' + (c.intervalIndex + 1) + ' / ' + c.workout.intervals.length }}
           </span>
           @if (!c.done) {
-            <span class="font-sora text-velo-lime tabular-nums text-2xl leading-none">
+            <span
+              class="font-sora text-velo-lime tabular-nums leading-none"
+              [class.text-xl]="compact()"
+              [class.text-2xl]="!compact()"
+            >
               {{ fmtTime(c.intervalRemainingSec) }}
             </span>
           }
         </div>
 
-        <div class="flex items-baseline justify-between gap-3 mb-3">
-          <div class="font-sora text-on-surface text-xl truncate">
+        <div
+          class="flex items-baseline justify-between gap-3"
+          [class.mb-2]="compact()"
+          [class.mb-3]="!compact()"
+        >
+          <div
+            class="font-sora text-on-surface truncate"
+            [class.text-base]="compact()"
+            [class.text-xl]="!compact()"
+          >
             {{ c.intervalLabel }}
           </div>
           <div class="font-grotesk text-label-caps text-on-surface-variant uppercase tracking-wider text-xs whitespace-nowrap">
@@ -65,7 +87,9 @@ import type { WorkoutLiveContext } from 'recording';
                 Now
               </div>
               <div
-                class="font-sora tabular-nums text-4xl leading-none"
+                class="font-sora tabular-nums leading-none"
+                [class.text-3xl]="compact()"
+                [class.text-4xl]="!compact()"
                 [class.text-velo-lime]="c.status === 'in'"
                 [class.text-orange-300]="c.status === 'below'"
                 [class.text-rose-300]="c.status === 'above'"
@@ -97,7 +121,11 @@ import type { WorkoutLiveContext } from 'recording';
           </div>
         }
 
-        <div class="mt-3 flex h-2 w-full rounded-full overflow-hidden bg-white/5">
+        <div
+          class="flex h-2 w-full rounded-full overflow-hidden bg-white/5"
+          [class.mt-2]="compact()"
+          [class.mt-3]="!compact()"
+        >
           @for (s of segments(); track s.index) {
             <div
               [style.width.%]="s.widthPct"
@@ -109,7 +137,7 @@ import type { WorkoutLiveContext } from 'recording';
           }
         </div>
 
-        @if (!c.done) {
+        @if (!c.done && !compact()) {
           <div class="mt-3 flex items-center justify-between gap-2">
             <button
               type="button"
@@ -139,6 +167,13 @@ import type { WorkoutLiveContext } from 'recording';
 })
 export class WorkoutOverlayComponent {
   readonly ctx = input.required<WorkoutLiveContext | null>();
+  /**
+   * When true, drop padding/font sizes by one notch and hide the
+   * Back/Skip buttons so the overlay can sit above the sensor tile
+   * grid in the Combined ride view. The Workout-only swipe page
+   * uses the full (non-compact) layout.
+   */
+  readonly compact = input(false);
 
   /** Emitted when the rider taps Skip. Parent advances the workout. */
   readonly next = output<void>();
