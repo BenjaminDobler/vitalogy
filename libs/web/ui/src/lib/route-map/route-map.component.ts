@@ -47,6 +47,8 @@ export class RouteMapComponent {
       // dynamic-import returns the module namespace (.default property
       // wraps the actual Leaflet API). In dev mode the loader unwrapped
       // it silently; prod does not — so resolve both shapes here.
+      let resizeObserver: ResizeObserver | null = null;
+
       import('leaflet').then((mod) => {
         if (cancelled) return;
         const L = ((mod as unknown as { default?: typeof mod }).default ??
@@ -82,10 +84,24 @@ export class RouteMapComponent {
           fillOpacity: 1,
           radius: 7,
         }).addTo(map);
+
+        // Leaflet measures the container at init time. In the mobile
+        // WebView (and sometimes on web with deferred layout) the
+        // container hasn't settled yet, so tiles get computed from a
+        // 0×0 size and panning never triggers new tile loads. Two
+        // safety nets:
+        //   1. Force an invalidate on the next paint, when layout has
+        //      definitely run.
+        //   2. ResizeObserver re-invalidates if the container resizes
+        //      later (orientation change, address-bar collapse, etc).
+        requestAnimationFrame(() => map?.invalidateSize());
+        resizeObserver = new ResizeObserver(() => map?.invalidateSize());
+        resizeObserver.observe(ref.nativeElement);
       });
 
       onCleanup(() => {
         cancelled = true;
+        resizeObserver?.disconnect();
         map?.remove();
       });
     });
