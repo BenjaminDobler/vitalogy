@@ -95,6 +95,9 @@
     },
     {
       "path": "./libs/api/ride-views"
+    },
+    {
+      "path": "./libs/web/feature-ride-views"
     }
   ]
 }

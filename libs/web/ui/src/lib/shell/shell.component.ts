@@ -76,6 +76,7 @@ export class ShellComponent {
     { path: '/workouts', label: 'Workouts' },
     { path: '/import', label: 'Import' },
     { path: '/analysis', label: 'Analysis' },
+    { path: '/ride-views', label: 'Layouts' },
     { path: '/profile', label: 'Profile' },
   ];
 

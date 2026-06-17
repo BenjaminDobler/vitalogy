@@ -43,4 +43,10 @@ export const appRoutes: Route[] = [
     loadChildren: () =>
       import('feature-workouts').then((m) => m.featureWorkoutsRoutes),
   },
+  {
+    path: 'ride-views',
+    canActivate: [authGuard],
+    loadChildren: () =>
+      import('feature-ride-views').then((m) => m.featureRideViewsRoutes),
+  },
 ];

@@ -24,6 +24,7 @@
       "feature-profile": ["./libs/web/feature-profile/src/index.ts"],
       "feature-coach": ["./libs/web/feature-coach/src/index.ts"],
       "feature-workouts": ["./libs/web/feature-workouts/src/index.ts"],
+      "feature-ride-views": ["./libs/web/feature-ride-views/src/index.ts"],
       "feature-auth": ["./libs/web/feature-auth/src/index.ts"],
       "training-metrics": ["./libs/shared/training-metrics/src/index.ts"],
       "ui": ["./libs/web/ui/src/index.ts"],

@@ -30,6 +30,9 @@
     },
     {
       "path": "../../libs/web/feature-auth/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/web/feature-ride-views/tsconfig.lib.json"
     }
   ]
 }
