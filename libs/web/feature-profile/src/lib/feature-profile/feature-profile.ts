@@ -8,6 +8,7 @@ import type {
   MemoryCategory,
   UserProfile,
 } from 'data-models';
+import { PairDeviceComponent } from '../pair-device/pair-device.component';
 
 interface CategorySpec {
   key: MemoryCategory;
@@ -55,11 +56,26 @@ const PROVIDERS: ProviderSpec[] = [
 
 @Component({
   selector: 'lib-feature-profile',
-  imports: [DatePipe, DecimalPipe, FormsModule],
+  imports: [DatePipe, DecimalPipe, FormsModule, PairDeviceComponent],
   template: `
-    <h1 class="font-sora italic uppercase tracking-tighter text-3xl text-velo-lime mb-6">
-      Profile
-    </h1>
+    <div class="flex items-baseline justify-between mb-6 flex-wrap gap-3">
+      <h1 class="font-sora italic uppercase tracking-tighter text-3xl text-velo-lime">
+        Profile
+      </h1>
+      <button
+        type="button"
+        (click)="showPair.set(true)"
+        class="flex items-center gap-2 px-4 py-2 rounded-full velo-glass text-on-surface hover:bg-white/10 font-grotesk text-label-caps uppercase text-xs"
+        title="Pair your mobile device"
+      >
+        <span class="material-symbols-outlined text-velo-lime text-[18px]">qr_code_2</span>
+        Pair mobile
+      </button>
+    </div>
+
+    @if (showPair()) {
+      <lib-pair-device (close)="showPair.set(false)" />
+    }
 
     @if (profileLoading()) {
       <p class="text-on-surface-variant font-grotesk text-label-caps uppercase">Loading…</p>
@@ -296,6 +312,7 @@ export class FeatureProfile {
 
   protected readonly profile = signal<UserProfile | null>(null);
   protected readonly profileLoading = signal(true);
+  protected readonly showPair = signal(false);
   protected readonly memories = signal<Memory[]>([]);
   protected readonly saving = signal(false);
   protected readonly savedAt = signal<Date | null>(null);
