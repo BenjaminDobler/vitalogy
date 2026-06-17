@@ -92,6 +92,9 @@
     },
     {
       "path": "./libs/web/feature-auth"
+    },
+    {
+      "path": "./libs/api/ride-views"
     }
   ]
 }

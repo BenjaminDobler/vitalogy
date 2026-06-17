@@ -31,6 +31,7 @@ model User {
   memories      Memory[]
   chatThreads   ChatThread[]
   workouts      Workout[]
+  rideViews     RideView[]
 }
 
 // Per-athlete profile + training settings. Canonical source of truth for
@@ -195,6 +196,45 @@ model ApiKey {
 enum AIProvider {
   ANTHROPIC
   GEMINI
+}
+
+// A page in the mobile ride-screen swipe carousel. Three "DEFAULT_*" kinds
+// are auto-seeded for every user the first time they list views — those
+// are the built-in Combined / Workout-coach / Sensors layouts and cannot
+// be deleted or have their gridConfig edited. Users can still toggle
+// `isActive` or change `sortOrder` on defaults.
+//
+// CUSTOM views carry a `gridConfig` JSON describing widget placements on
+// the `rows × cols` grid the user picked when creating the view.
+// Shape: WidgetPlacement[] in libs/shared/data-models.
+model RideView {
+  id         String       @id @default(cuid())
+  userId     String
+  kind       RideViewKind
+  name       String
+  sortOrder  Int          @default(0)
+  isActive   Boolean      @default(true)
+  rows       Int          @default(4)
+  cols       Int          @default(4)
+  // Null for DEFAULT_* kinds — they're rendered by the mobile client
+  // from hard-coded presets. Required for CUSTOM.
+  gridConfig Json?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Uniqueness for the three DEFAULT_* kinds (one of each per user) is
+  // enforced in the service layer rather than via a Prisma @@unique,
+  // because that would also block multiple CUSTOM rows per user.
+  @@index([userId, sortOrder])
+}
+
+enum RideViewKind {
+  DEFAULT_COMBINED
+  DEFAULT_WORKOUT
+  DEFAULT_SENSORS
+  CUSTOM
 }
 
 // A single ride / workout / training session.

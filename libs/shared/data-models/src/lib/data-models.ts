@@ -7,3 +7,4 @@ export * from './achievements.js';
 export * from './training-load.js';
 export * from './coach.js';
 export * from './workout.js';
+export * from './ride-view.js';

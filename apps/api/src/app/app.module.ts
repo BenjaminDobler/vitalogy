@@ -6,6 +6,7 @@ import { AiModule } from 'ai';
 import { StravaModule } from 'strava';
 import { ActivitiesModule } from 'activities';
 import { CoachModule } from 'coach';
+import { RideViewsModule } from 'ride-views';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -21,6 +22,7 @@ import { AppService } from './app.service';
     StravaModule,
     ActivitiesModule,
     CoachModule,
+    RideViewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
