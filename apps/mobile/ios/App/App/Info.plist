@@ -31,6 +31,8 @@
 	<string>Vitalogy uses your location to record the GPS track of your ride.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Vitalogy uses your location to record the GPS track of your ride, including while the app is in the background.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Vitalogy uses the camera to scan the pairing QR code shown on your desktop, so this phone can connect to your account.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Vitalogy uses your local network to reach the Vitalogy API running on your Mac during development.</string>
 	<key>NSAppTransportSecurity</key>

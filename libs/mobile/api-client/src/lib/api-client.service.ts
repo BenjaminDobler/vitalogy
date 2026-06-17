@@ -2,18 +2,22 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ConfigService } from './config.service';
+import { MobileAuthService } from './auth.service';
 
 /**
  * Thin wrapper over Angular HttpClient that:
  *  - prepends the configured API base URL when set, otherwise sends to the
  *    same origin (useful with a dev-server proxy, as the simulator uses)
- *  - sends the configured X-User-Id header so the backend middleware
- *    can scope queries to this install
+ *  - sends Authorization: Bearer <jwt> when MobileAuthService has a
+ *    session token (after QR pair or email/password login)
+ *  - falls back to X-User-Id when there's no token, keeping pre-pair
+ *    installs working as before
  */
 @Injectable({ providedIn: 'root' })
 export class ApiClient {
   private readonly http = inject(HttpClient);
   private readonly config = inject(ConfigService);
+  private readonly auth = inject(MobileAuthService);
 
   /**
    * True only when an explicit base URL is set. Mobile uses this to decide
@@ -47,6 +51,13 @@ export class ApiClient {
   }
 
   private headers(): Record<string, string> {
+    const token = this.auth.token();
+    if (token) {
+      return {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      };
+    }
     return {
       'Content-Type': 'application/json',
       'X-User-Id': this.config.userId(),

@@ -5,6 +5,7 @@ import {
   ALL_RECORD_TILES,
   ConfigService,
   DEFAULT_USER_ID,
+  MobileAuthService,
   type RecordLayout,
   type RecordTile,
 } from 'api-client';
@@ -15,10 +16,11 @@ import {
   KnownSensorStore,
 } from 'ble';
 import { BottomNavComponent } from 'feature-record';
+import { PairScanComponent } from '../pair-scan/pair-scan.component';
 
 @Component({
   selector: 'lib-feature-settings',
-  imports: [FormsModule, RouterLink, BottomNavComponent],
+  imports: [FormsModule, RouterLink, BottomNavComponent, PairScanComponent],
   template: `
     <div class="min-h-screen velo-carbon text-on-surface font-inter pb-24">
       <header class="px-5 pt-safe-6 pb-4 flex items-center justify-between border-b border-white/5">
@@ -34,6 +36,50 @@ import { BottomNavComponent } from 'feature-record';
       </header>
 
       <section class="px-5 pb-6 space-y-8 max-w-xl">
+        <!-- Account / pairing -->
+        <fieldset class="space-y-3">
+          <legend class="font-grotesk text-label-caps text-velo-lime uppercase mb-1 flex items-center gap-2">
+            <span class="material-symbols-outlined text-[18px]">account_circle</span>
+            Account
+          </legend>
+          @if (auth.email(); as e) {
+            <div class="rounded-xl bg-surface-container-low px-4 py-3 flex items-center gap-3">
+              <span class="material-symbols-outlined text-velo-lime">check_circle</span>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm text-on-surface truncate">{{ e }}</div>
+                <div class="text-[10px] text-on-surface-variant uppercase tracking-wider font-grotesk">
+                  Signed in
+                </div>
+              </div>
+              <button
+                type="button"
+                (click)="onSignOut()"
+                class="text-xs px-3 py-1.5 rounded-md text-rose-300 hover:bg-white/10"
+              >Sign out</button>
+            </div>
+          } @else {
+            <p class="text-xs text-on-surface-variant">
+              Pair this phone with your desktop session to upload rides to
+              the right account.
+            </p>
+            <button
+              type="button"
+              (click)="showPairScan.set(true)"
+              class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-velo-lime text-velo-on-lime font-grotesk text-label-caps uppercase velo-shadow-lime"
+            >
+              <span class="material-symbols-outlined text-[20px]">qr_code_scanner</span>
+              Scan to connect
+            </button>
+          }
+        </fieldset>
+
+        @if (showPairScan()) {
+          <mobile-pair-scan
+            (close)="showPairScan.set(false)"
+            (success)="onPairSuccess()"
+          />
+        }
+
         <!-- Sensors -->
         <fieldset id="sensors" class="space-y-3">
           <legend class="font-grotesk text-label-caps text-velo-lime uppercase mb-1 flex items-center gap-2">
@@ -312,6 +358,8 @@ export class FeatureSettings {
   private readonly config = inject(ConfigService);
   private readonly ble = inject(BleManager);
   private readonly knownStore = inject(KnownSensorStore);
+  protected readonly auth = inject(MobileAuthService);
+  protected readonly showPairScan = signal(false);
 
   protected readonly defaultUserId = DEFAULT_USER_ID;
   protected readonly allTiles = ALL_RECORD_TILES;
@@ -331,6 +379,16 @@ export class FeatureSettings {
   protected readonly discovered = signal<DiscoveredSensor[]>([]);
   protected readonly connecting = signal<string | null>(null);
   protected readonly sensorError = signal<string | null>(null);
+
+  protected async onSignOut(): Promise<void> {
+    await this.auth.clear();
+  }
+
+  protected onPairSuccess(): void {
+    this.showPairScan.set(false);
+    // Reflect the freshly-saved apiBaseUrl in the Backend section input.
+    this.baseUrl = this.config.apiBaseUrl();
+  }
 
   protected readonly newlyDiscovered = computed(() => {
     const ids = new Set(this.connected().map((c) => c.deviceId));
