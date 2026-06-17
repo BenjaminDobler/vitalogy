@@ -13,14 +13,26 @@ import { BleManager } from 'ble';
 // to feature-settings. The service is still provided globally via 'root'.
 import { GpsTracker, RecordingService, UploadQueue } from 'recording';
 import { WeatherService } from 'weather';
-import { compassCardinal, describeWeather, type Workout } from 'data-models';
-import { ConfigService, type RecordTile, WorkoutsService } from 'api-client';
+import {
+  compassCardinal,
+  describeWeather,
+  type RideView,
+  type WidgetType,
+  type Workout,
+} from 'data-models';
+import {
+  ConfigService,
+  type RecordTile,
+  RideViewsService,
+  WorkoutsService,
+} from 'api-client';
 import { SpeedGaugeComponent } from '../speed-gauge/speed-gauge.component';
 import { SpeedRingComponent } from '../speed-ring/speed-ring.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { WorkoutPickerComponent } from '../workout-picker/workout-picker.component';
 import { WorkoutOverlayComponent } from '../workout-overlay/workout-overlay.component';
 import { CountdownOverlayComponent } from '../countdown-overlay/countdown-overlay.component';
+import { WidgetRendererComponent } from '../widget-renderer/widget-renderer.component';
 
 interface TileDef {
   label: string;
@@ -59,6 +71,7 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
     WorkoutPickerComponent,
     WorkoutOverlayComponent,
     CountdownOverlayComponent,
+    WidgetRendererComponent,
   ],
   template: `
     <div class="min-h-screen velo-carbon text-on-surface flex flex-col font-inter relative" [class.pb-24]="!recording()">
@@ -231,60 +244,112 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
       }
 
       @if (recording()) {
-        @if (workoutContext()) {
-          <!-- Swipeable carousel: Combined → Workout → Sensors.
-               Uses CSS scroll-snap so the gesture is native (no JS swipe
-               handling). onCarouselScroll syncs the active dot. -->
-          <div
-            #carouselEl
-            (scroll)="onCarouselScroll($event)"
-            class="flex-1 min-h-0 overflow-x-auto overflow-y-hidden snap-x snap-mandatory flex velo-no-scrollbar"
-          >
-            <!-- Page 0 — Combined: compact workout strip + sensor tiles.
-                 Each page is independently y-scrollable so a long tile
-                 list on a small phone doesn't get clipped. -->
+        <!-- Dynamic carousel driven by the user's active RideView list
+             (synced from /api/ride-views, cached in localStorage). Each
+             active view is one swipeable page; defaults render their
+             preset layouts, customs render their gridConfig as a CSS
+             grid. With a single page the dots hide and scroll-snap
+             becomes a no-op. -->
+        <div
+          #carouselEl
+          (scroll)="onCarouselScroll($event)"
+          class="flex-1 min-h-0 overflow-x-auto overflow-y-hidden snap-x snap-mandatory flex velo-no-scrollbar"
+        >
+          @for (view of activeRideViews(); track view.id) {
             <div class="w-full shrink-0 snap-center overflow-y-auto velo-no-scrollbar pt-3">
-              <mobile-workout-overlay
-                [ctx]="workoutContext()"
-                [compact]="true"
-              />
-              <ng-container *ngTemplateOutlet="tilesTpl"></ng-container>
+              @switch (view.kind) {
+                @case ('DEFAULT_COMBINED') {
+                  @if (workoutContext()) {
+                    <mobile-workout-overlay
+                      [ctx]="workoutContext()"
+                      [compact]="true"
+                    />
+                  }
+                  <ng-container *ngTemplateOutlet="tilesTpl"></ng-container>
+                }
+                @case ('DEFAULT_WORKOUT') {
+                  @if (workoutContext()) {
+                    <div class="flex flex-col justify-center min-h-full">
+                      <mobile-workout-overlay
+                        [ctx]="workoutContext()"
+                        [compact]="false"
+                        (next)="skipInterval()"
+                        (previous)="previousInterval()"
+                      />
+                    </div>
+                  } @else {
+                    <div class="flex flex-col items-center justify-center min-h-full px-6 text-center">
+                      <span class="material-symbols-outlined text-on-surface-variant text-[36px]">flag</span>
+                      <p class="mt-3 font-grotesk text-label-caps text-on-surface-variant uppercase">
+                        No workout in this session
+                      </p>
+                      <p class="mt-2 text-xs text-on-surface-variant">
+                        Pick a workout before starting to see live coaching here.
+                      </p>
+                    </div>
+                  }
+                }
+                @case ('DEFAULT_SENSORS') {
+                  <ng-container *ngTemplateOutlet="tilesTpl"></ng-container>
+                }
+                @case ('CUSTOM') {
+                  @if (view.gridConfig && view.gridConfig.length > 0) {
+                    <div
+                      class="grid gap-3 px-3"
+                      [style.grid-template-rows]="
+                        'repeat(' + view.rows + ', minmax(80px, 1fr))'
+                      "
+                      [style.grid-template-columns]="
+                        'repeat(' + view.cols + ', minmax(0, 1fr))'
+                      "
+                    >
+                      @for (w of view.gridConfig; track w.id) {
+                        <div
+                          [style.grid-column]="(w.x + 1) + ' / span ' + w.w"
+                          [style.grid-row]="(w.y + 1) + ' / span ' + w.h"
+                        >
+                          <mobile-widget-renderer
+                            [widget]="w.widget"
+                            [sensorMissing]="widgetSensorMissing(w.widget)"
+                          />
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div class="flex flex-col items-center justify-center min-h-full px-6 text-center">
+                      <span class="material-symbols-outlined text-on-surface-variant text-[36px]">grid_view</span>
+                      <p class="mt-3 font-grotesk text-label-caps text-on-surface-variant uppercase">
+                        Empty layout
+                      </p>
+                      <p class="mt-2 text-xs text-on-surface-variant">
+                        Add widgets in the web editor to fill this page.
+                      </p>
+                    </div>
+                  }
+                }
+              }
             </div>
-            <!-- Page 1 — Workout focus: full overlay with Back/Skip. -->
-            <div class="w-full shrink-0 snap-center overflow-y-auto velo-no-scrollbar flex flex-col justify-center pt-3">
-              <mobile-workout-overlay
-                [ctx]="workoutContext()"
-                [compact]="false"
-                (next)="skipInterval()"
-                (previous)="previousInterval()"
-              />
-            </div>
-            <!-- Page 2 — Sensors only: original tile-only layout. -->
-            <div class="w-full shrink-0 snap-center overflow-y-auto velo-no-scrollbar pt-3">
-              <ng-container *ngTemplateOutlet="tilesTpl"></ng-container>
-            </div>
-          </div>
+          }
+        </div>
 
+        @if (activeRideViews().length > 1) {
           <!-- Page indicator dots. Tappable for keyboard / one-handed use. -->
           <div class="flex items-center justify-center gap-2 py-2" role="tablist" aria-label="Ride view">
-            @for (p of carouselPages; track p.index) {
+            @for (view of activeRideViews(); track view.id; let i = $index) {
               <button
                 type="button"
                 role="tab"
-                [attr.aria-selected]="carouselPage() === p.index"
-                [attr.aria-label]="p.label + ' view'"
-                (click)="scrollToPage(p.index)"
+                [attr.aria-selected]="carouselPage() === i"
+                [attr.aria-label]="view.name + ' view'"
+                (click)="scrollToPage(i)"
                 class="h-2 rounded-full transition-all"
-                [class.w-6]="carouselPage() === p.index"
-                [class.bg-velo-lime]="carouselPage() === p.index"
-                [class.w-2]="carouselPage() !== p.index"
-                [class.bg-white\\/20]="carouselPage() !== p.index"
+                [class.w-6]="carouselPage() === i"
+                [class.bg-velo-lime]="carouselPage() === i"
+                [class.w-2]="carouselPage() !== i"
+                [class.bg-white\\/20]="carouselPage() !== i"
               ></button>
             }
           </div>
-        } @else {
-          <!-- No workout picked: just the tile grid. -->
-          <ng-container *ngTemplateOutlet="tilesTpl"></ng-container>
         }
 
         <div class="px-5 pb-2 text-center font-grotesk text-mono-data tabular-nums uppercase flex items-center justify-center gap-2">
@@ -517,6 +582,25 @@ export class FeatureRecord {
     }
   }
 
+  /**
+   * WidgetType variant of `tileSensorMissing`. Custom views can place a
+   * power widget (not part of RecordTile yet) so we add the POWER case.
+   */
+  protected widgetSensorMissing(w: WidgetType): boolean {
+    const kinds = new Set(this.connected().flatMap((c) => c.subscribed));
+    switch (w) {
+      case 'hr':
+      case 'avg-hr':
+        return !kinds.has('HRM');
+      case 'cadence':
+        return !kinds.has('CSC');
+      case 'power':
+        return !kinds.has('POWER');
+      default:
+        return false;
+    }
+  }
+
   protected tileValue(t: RecordTile): string {
     switch (t) {
       case 'hr':
@@ -556,19 +640,32 @@ export class FeatureRecord {
   protected readonly menuOpen = signal(false);
 
   /**
-   * Active page in the ride-screen swipe carousel (workout-mode only).
-   * 0 = Combined, 1 = Workout focus, 2 = Sensors only. Synced from the
-   * scroll-snap container's scrollLeft so the dot indicator stays
-   * accurate whether the rider swiped or tapped.
+   * Active page in the ride-screen swipe carousel. Index into
+   * `activeRideViews()`. Synced from the scroll-snap container's
+   * scrollLeft so the dot indicator stays accurate whether the rider
+   * swiped or tapped.
    */
   protected readonly carouselPage = signal(0);
-  protected readonly carouselPages = [
-    { index: 0, label: 'Combined' },
-    { index: 1, label: 'Workout' },
-    { index: 2, label: 'Sensors' },
-  ] as const;
   private readonly carouselEl =
     viewChild<ElementRef<HTMLDivElement>>('carouselEl');
+
+  private readonly rideViewsService = inject(RideViewsService);
+
+  /**
+   * The carousel pages. Filters out anything inactive and sorts by the
+   * user's chosen order. When the API hasn't loaded yet (fresh install,
+   * never connected to the backend) we synthesize the three built-in
+   * defaults so the ride screen never has zero pages.
+   */
+  protected readonly activeRideViews = computed<RideView[]>(() => {
+    const fromServer = this.rideViewsService
+      .views()
+      .filter((v) => v.isActive)
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    if (fromServer.length > 0) return fromServer;
+    return FALLBACK_DEFAULT_VIEWS;
+  });
 
   protected onCarouselScroll(e: Event): void {
     const el = e.target as HTMLElement;
@@ -803,3 +900,49 @@ function toMessage(err: unknown): string {
     return String(err);
   }
 }
+
+/**
+ * Used as the carousel fallback before the backend has ever been
+ * reached (fresh install + no localStorage cache yet). Mirrors what
+ * the server seeds on first /api/ride-views call, so the visible
+ * carousel matches the eventual server state exactly. Ids are
+ * placeholders — the @for(...; track id) loop just needs uniqueness.
+ */
+const FALLBACK_DEFAULT_VIEWS: RideView[] = [
+  {
+    id: '__fallback_combined',
+    kind: 'DEFAULT_COMBINED',
+    name: 'Combined',
+    sortOrder: 0,
+    isActive: true,
+    rows: 4,
+    cols: 4,
+    gridConfig: null,
+    createdAt: '',
+    updatedAt: '',
+  },
+  {
+    id: '__fallback_workout',
+    kind: 'DEFAULT_WORKOUT',
+    name: 'Workout coach',
+    sortOrder: 1,
+    isActive: true,
+    rows: 4,
+    cols: 4,
+    gridConfig: null,
+    createdAt: '',
+    updatedAt: '',
+  },
+  {
+    id: '__fallback_sensors',
+    kind: 'DEFAULT_SENSORS',
+    name: 'Sensors',
+    sortOrder: 2,
+    isActive: true,
+    rows: 4,
+    cols: 4,
+    gridConfig: null,
+    createdAt: '',
+    updatedAt: '',
+  },
+];
