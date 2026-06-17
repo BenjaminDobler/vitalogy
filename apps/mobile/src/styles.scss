@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Leaflet's own stylesheet — required for tile positioning, marker
+   layering, and the attribution control. Without this, tiles render
+   in the wrong spots / not at all (see the route-map on activity
+   detail). Mirrors apps/web/src/styles.scss. */
+@import 'leaflet/dist/leaflet.css';
+
 /* Mobile-first base. Prevent iOS bounce / horizontal scroll. */
 html, body {
   overscroll-behavior: none;
