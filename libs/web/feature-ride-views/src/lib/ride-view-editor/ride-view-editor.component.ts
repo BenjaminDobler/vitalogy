@@ -284,6 +284,16 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
     ComponentRef<WidgetPreviewComponent>
   >();
 
+  /**
+   * Set by the drag-in helper callback the instant the user grabs a
+   * palette item; consumed (and cleared) by the next `added` event.
+   * This is how we plumb the widget type through gridstack — passing
+   * it via the widget's `content` field would show up as literal text
+   * because gridstack 12 escapes content as textContent, not HTML.
+   * JS is single-threaded so there's no race between the two callbacks.
+   */
+  private pendingDropType: WidgetType | null = null;
+
   async ngAfterViewInit(): Promise<void> {
     // The list endpoint is the only one mobile + web both hit, so we
     // route through the same cache. Refresh once to be sure the row
@@ -344,16 +354,13 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
         const knownType: WidgetType | undefined =
           id != null ? this.widgetTypes.get(id) : undefined;
         let type: WidgetType | undefined = knownType;
-        if (!type) {
-          // The drag-in flow stashes <span data-widget-type="..."> inside
-          // the item's content (see setupDragIn). The custom helper
-          // doesn't survive the drop, so this is how we recover the
-          // type post-drop. Use a descendant selector — gridstack
-          // wraps content in .grid-stack-item-content.
-          const marker = itemEl.querySelector('[data-widget-type]') as
-            | HTMLElement
-            | null;
-          type = marker?.dataset['widgetType'] as WidgetType | undefined;
+        if (!type && this.pendingDropType) {
+          // Drag-in flow: the helper callback that runs just before the
+          // drop captured the source palette type into pendingDropType.
+          // Consume it here (and clear) so subsequent unrelated `added`
+          // events don't reuse a stale value.
+          type = this.pendingDropType;
+          this.pendingDropType = null;
         }
         if (!type) continue;
 
@@ -440,12 +447,11 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
           const palette = type ? PALETTE.find((p) => p.type === type) : null;
           const w = palette?.defaultW ?? 1;
           const h = palette?.defaultH ?? 1;
+          // Pass the widget type to the upcoming `added` event handler.
+          // Cleared in the handler once consumed.
+          this.pendingDropType = type ?? null;
           const ghost = document.createElement('div');
           ghost.className = 'palette-drag-helper';
-          // Mirror data-widget-type onto the helper so the `added`
-          // event handler (which inspects the cloned DOM) can still
-          // recover the widget type after drop.
-          if (type) ghost.dataset['widgetType'] = type;
           ghost.style.cssText = `
             width: ${w * cellPx}px;
             height: ${h * cellPx}px;
@@ -469,11 +475,6 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
       PALETTE.map((p) => ({
         w: p.defaultW,
         h: p.defaultH,
-        // Stash the widget type inside the content so the `added`
-        // handler can recover it after the custom helper is discarded.
-        // mountWidgetComponent clears this stub before mounting the
-        // real Angular component, so it's never visible to the user.
-        content: `<span data-widget-type="${p.type}" style="display:none"></span>`,
       })),
     );
   }
