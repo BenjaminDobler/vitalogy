@@ -55,6 +55,29 @@ const ROW_OPTIONS = [2, 3, 4, 5, 6, 7, 8];
 const COL_OPTIONS = [2, 3, 4, 5, 6];
 
 /**
+ * Canvas-width presets so the editor preview matches common phones.
+ * Width is in CSS pixels; the canvas is constrained to that size and
+ * gridstack handles the cell sizing accordingly. `'auto'` lets the
+ * canvas fill its parent (current default) — handy for big external
+ * monitors during design work.
+ */
+interface DevicePreset {
+  key: string;
+  label: string;
+  width: number | null;
+}
+const DEVICE_PRESETS: DevicePreset[] = [
+  { key: 'auto', label: 'Auto (fit window)', width: null },
+  { key: 'iphone-se', label: 'iPhone SE — 375px', width: 375 },
+  { key: 'iphone-16', label: 'iPhone 16 — 393px', width: 393 },
+  { key: 'iphone-16-pro', label: 'iPhone 16 Pro — 402px', width: 402 },
+  { key: 'iphone-16-pro-max', label: 'iPhone 16 Pro Max — 440px', width: 440 },
+  { key: 'pixel-8', label: 'Pixel 8 — 412px', width: 412 },
+  { key: 'galaxy-s24', label: 'Galaxy S24 — 360px', width: 360 },
+  { key: 'custom', label: 'Custom width…', width: null },
+];
+
+/**
  * Visual page builder for a single CUSTOM RideView. Uses gridstack to
  * handle the drag/drop + resize gestures; we keep a TypeScript
  * `widgetTypes` map keyed by gridstack id so we can round-trip back to
@@ -114,6 +137,32 @@ const COL_OPTIONS = [2, 3, 4, 5, 6];
           }
         </select>
       </label>
+      <label class="font-grotesk text-label-caps text-on-surface-variant uppercase text-xs flex items-center gap-2">
+        Preview
+        <select
+          [(ngModel)]="deviceKey"
+          (ngModelChange)="onDeviceChange()"
+          class="bg-white/5 border border-white/15 rounded px-2 py-1 text-on-surface font-grotesk"
+        >
+          @for (d of devicePresets; track d.key) {
+            <option [ngValue]="d.key">{{ d.label }}</option>
+          }
+        </select>
+      </label>
+      @if (deviceKey === 'custom') {
+        <label class="font-grotesk text-label-caps text-on-surface-variant uppercase text-xs flex items-center gap-2">
+          Width
+          <input
+            type="number"
+            min="240"
+            max="900"
+            step="10"
+            [(ngModel)]="customWidth"
+            class="w-20 bg-white/5 border border-white/15 rounded px-2 py-1 text-on-surface font-grotesk tabular-nums"
+          />
+          <span class="text-on-surface-variant">px</span>
+        </label>
+      }
       <button
         type="button"
         (click)="onCancel()"
@@ -168,12 +217,19 @@ const COL_OPTIONS = [2, 3, 4, 5, 6];
         </p>
       </aside>
 
-      <!-- Canvas -->
+      <!-- Canvas. When a device preset is picked, max-width constrains
+           the canvas so the grid scales to roughly what the rider will
+           see on that phone. -->
       <div>
-        <div #canvas class="grid-stack velo-glass rounded-xl"></div>
-        <p class="text-xs text-on-surface-variant mt-2 font-grotesk uppercase tracking-wider">
-          Mobile preview · {{ cols }} × {{ rows }} grid
-        </p>
+        <div
+          class="mx-auto transition-[max-width] duration-200"
+          [style.max-width]="canvasMaxWidth()"
+        >
+          <div #canvas class="grid-stack velo-glass rounded-xl"></div>
+          <p class="text-xs text-on-surface-variant mt-2 font-grotesk uppercase tracking-wider">
+            {{ previewLabel() }} · {{ cols }} × {{ rows }} grid
+          </p>
+        </div>
       </div>
     </div>
   `,
@@ -256,11 +312,16 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
   protected readonly palette = PALETTE;
   protected readonly rowOptions = ROW_OPTIONS;
   protected readonly colOptions = COL_OPTIONS;
+  protected readonly devicePresets = DEVICE_PRESETS;
 
   /** Mutable form state. Initialized from the loaded RideView. */
   protected name = '';
   protected rows = 4;
   protected cols = 4;
+  /** Selected device preset key — drives canvas max-width. */
+  protected deviceKey = 'iphone-16';
+  /** Used only when `deviceKey === 'custom'`. */
+  protected customWidth = 400;
 
   protected readonly saving = signal(false);
   protected readonly lastError = signal<string | null>(null);
@@ -499,6 +560,36 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
     this.grid?.column(this.cols, 'compact');
   }
 
+  /**
+   * The user picked a different device preset. We don't have to do
+   * anything special on the gridstack side — it watches its own
+   * containerresize and re-lays-out cells when our max-width binding
+   * changes the wrapper. Call onResize() defensively in case the
+   * transition timing leaves gridstack stuck on a stale cellWidth.
+   */
+  protected onDeviceChange(): void {
+    setTimeout(() => this.grid?.onResize(), 250);
+  }
+
+  protected canvasMaxWidth(): string {
+    if (this.deviceKey === 'auto') return 'none';
+    if (this.deviceKey === 'custom') {
+      const w = clampInt(this.customWidth, 240, 900);
+      return `${w}px`;
+    }
+    const preset = DEVICE_PRESETS.find((d) => d.key === this.deviceKey);
+    return preset?.width != null ? `${preset.width}px` : 'none';
+  }
+
+  protected previewLabel(): string {
+    if (this.deviceKey === 'auto') return 'Mobile preview';
+    if (this.deviceKey === 'custom') {
+      return `Custom · ${clampInt(this.customWidth, 240, 900)}px`;
+    }
+    const preset = DEVICE_PRESETS.find((d) => d.key === this.deviceKey);
+    return preset?.label ?? 'Mobile preview';
+  }
+
   protected async onSave(): Promise<void> {
     if (!this.grid || !this.view) return;
     this.saving.set(true);
@@ -613,4 +704,9 @@ function generateWidgetId(): string {
     return `w_${crypto.randomUUID()}`;
   }
   return `w_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  const n = Number.isFinite(value) ? Math.round(value) : min;
+  return Math.min(max, Math.max(min, n));
 }
