@@ -190,13 +190,15 @@ const COL_OPTIONS = [2, 3, 4, 5, 6];
       }
       :host ::ng-deep .grid-stack > .grid-stack-item > .grid-stack-item-content {
         /* No background / borders — the inner WidgetPreviewComponent
-           paints its own (velo-glass). We just keep overflow tidy and
-           position the delete button against this box. */
+           paints its own (velo-glass). Keep gridstack's stock
+           position: absolute + inset: 0 (don't override it!) so the
+           content div fills the resized cell — that's what lets the
+           Angular component's w-full / h-full evaluate to the actual
+           cell size as the rider drags the corner handle. */
         background: transparent;
         border: none;
         padding: 0;
         overflow: hidden;
-        position: relative;
       }
       :host ::ng-deep .grid-stack > .grid-stack-item .widget-delete {
         position: absolute;
