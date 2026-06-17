@@ -102,6 +102,17 @@ httpOnly cookie (`vt_session`, 30-day expiry). Required env:
   behind auth. In dev, leave unset and the API falls back to the
   `dev-user` identity (so the mobile app + simulator keep working).
 
+## Deployment
+
+Production runs on a Hetzner box at `vitalogy.app`. See
+[`deploy/README.md`](deploy/README.md) for the one-time server
+provisioning (Postgres, nginx, certbot, systemd, Cloudflare DNS) and
+the recurring deploy flow:
+
+```bash
+./deploy.sh    # build api + web, rsync, migrate, restart
+```
+
 ## Running
 
 ```bash

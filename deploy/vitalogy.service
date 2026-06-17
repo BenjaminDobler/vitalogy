@@ -1,0 +1,32 @@
+[Unit]
+Description=Vitalogy API (NestJS)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/vitalogy
+ExecStart=/usr/bin/node dist/apps/api/main.js
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vitalogy
+
+# Secrets + per-host config (NODE_ENV, DATABASE_URL, JWT_SECRET, etc).
+# File mode should be 600, owned by deploy.
+EnvironmentFile=/opt/vitalogy/.env
+
+# Bind 127.0.0.1 only — nginx fronts it.
+Environment="NODE_ENV=production"
+
+# Light hardening — the app doesn't need anything outside its dir.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
