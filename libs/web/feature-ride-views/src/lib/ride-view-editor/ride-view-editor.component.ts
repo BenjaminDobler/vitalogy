@@ -450,15 +450,27 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
           // Pass the widget type to the upcoming `added` event handler.
           // Cleared in the handler once consumed.
           this.pendingDropType = type ?? null;
+
+          // Gridstack ends up reusing this helper element as the actual
+          // grid-stack-item after drop (not just as a drag-only visual),
+          // so we structure it like a real widget: an outer
+          // `.grid-stack-item` with a `.grid-stack-item-content` child.
+          // mountWidgetComponent later finds the content child and
+          // replaces its visuals with the real Angular component, then
+          // strips this ghost's inline styles to clear the dashed look.
           const ghost = document.createElement('div');
-          ghost.className = 'palette-drag-helper';
+          ghost.className = 'grid-stack-item palette-drag-helper';
           ghost.style.cssText = `
             width: ${w * cellPx}px;
             height: ${h * cellPx}px;
+            pointer-events: none;
+          `;
+          const inner = document.createElement('div');
+          inner.className = 'grid-stack-item-content';
+          inner.style.cssText = `
             background: rgba(195, 244, 0, 0.2);
             border: 2px dashed #c3f400;
             border-radius: 12px;
-            pointer-events: none;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -468,7 +480,8 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
             text-transform: uppercase;
             letter-spacing: 0.05em;
           `;
-          ghost.textContent = palette?.label ?? '';
+          inner.textContent = palette?.label ?? '';
+          ghost.appendChild(inner);
           return ghost;
         },
       },
@@ -548,9 +561,13 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
       | null;
     if (!content) return;
 
-    // Clear anything gridstack put there (e.g. cloned palette HTML) so
-    // we own the cell exclusively.
+    // Clear anything gridstack put there (e.g. cloned palette HTML or
+    // the dashed-lime ghost from the drag helper) so we own the cell
+    // exclusively. Also wipe inline styles — when gridstack reuses our
+    // custom drag helper as the dropped item, its dashed border + lime
+    // background sits on this very element until we reset it.
     while (content.firstChild) content.removeChild(content.firstChild);
+    content.removeAttribute('style');
 
     // Destroy any previous instance (re-mounts can happen if gridstack
     // re-emits `added` for a load or move that touches the cell).
