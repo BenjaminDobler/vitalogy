@@ -11,7 +11,12 @@ import { RouterLink } from '@angular/router';
 import { BleManager } from 'ble';
 // KnownSensorStore is no longer referenced here — sensor management moved
 // to feature-settings. The service is still provided globally via 'root'.
-import { GpsTracker, RecordingService, UploadQueue } from 'recording';
+import {
+  GpsTracker,
+  RecordingService,
+  ScreenWakeService,
+  UploadQueue,
+} from 'recording';
 import { WeatherService } from 'weather';
 import {
   compassCardinal,
@@ -561,6 +566,12 @@ export class FeatureRecord {
   private readonly recordingService = inject(RecordingService);
   private readonly workoutsApi = inject(WorkoutsService);
 
+  // Instantiate ScreenWakeService here so its effect (which watches
+  // RecordingService.session() and toggles the screen wake lock) is
+  // wired up the first time the rider lands on the record screen.
+  // No methods to call — just keeping a reference is enough.
+  private readonly screenWake = inject(ScreenWakeService);
+
   constructor() {
     // Re-fetch ride views every time the rider navigates to this screen.
     // The service hydrates from localStorage on boot and (until now) only
@@ -569,6 +580,9 @@ export class FeatureRecord {
     // and reopened. Calling refresh in the component constructor pulls
     // a fresh list on every visit.
     void this.rideViewsService.refresh();
+    // Reference the field so it's not tree-shaken — its constructor
+    // installs the effect that controls the wake lock.
+    void this.screenWake;
   }
 
   protected readonly workoutContext = this.recordingService.workoutContext;
