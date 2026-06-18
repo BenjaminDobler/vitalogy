@@ -73,7 +73,7 @@ const CHART_SPECS: ChartSpec[] = [
   ],
   template: `
     <div class="mb-4">
-      <a routerLink="/activities" class="text-sm text-on-surface-variant hover:underline">
+      <a [routerLink]="backLink()" class="text-sm text-on-surface-variant hover:underline">
         ← Back to activities
       </a>
     </div>
@@ -440,6 +440,13 @@ export class ActivityDetailComponent {
 
   // Router input binding (provideRouter is configured with withComponentInputBinding()).
   readonly id = input.required<string>();
+  /**
+   * Where the "← Back to activities" link goes. Defaults to the web's
+   * `/activities` list; the mobile wrapper overrides this to
+   * `/history` so back goes to the mobile activities list with its
+   * bottom nav, not the web list reused via routing.
+   */
+  readonly backLink = input<string>('/activities');
 
   protected readonly ftp = this.settings.ftp;
   protected readonly maxHr = this.settings.maxHr;

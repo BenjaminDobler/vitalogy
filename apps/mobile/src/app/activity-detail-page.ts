@@ -18,7 +18,10 @@ import { BottomNavComponent } from 'feature-record';
   template: `
     <div class="min-h-screen velo-carbon text-on-surface font-inter pb-24">
       <div class="px-5 pt-safe-6 pb-6">
-        <lib-activity-detail [id]="id()" />
+        <!-- backLink="/history" so the back arrow returns to the
+             mobile activities list (with bottom nav), not the web
+             activities list reused via the /activities route. -->
+        <lib-activity-detail [id]="id()" backLink="/history" />
       </div>
       <mobile-bottom-nav />
     </div>
