@@ -18,6 +18,7 @@ import { Router, RouterLink } from '@angular/router';
 import { GridStack, type GridStackWidget } from 'gridstack';
 import type { RideView, WidgetPlacement, WidgetType } from 'data-models';
 import { RideViewsService } from '../ride-views.service';
+import { formatError } from '../format-error';
 import { WidgetPreviewComponent } from '../widget-preview/widget-preview.component';
 
 /**
@@ -604,7 +605,7 @@ export class RideViewEditorComponent implements AfterViewInit, OnDestroy {
       });
       await this.router.navigate(['/ride-views']);
     } catch (err) {
-      this.lastError.set(err instanceof Error ? err.message : String(err));
+      this.lastError.set(formatError(err));
     } finally {
       this.saving.set(false);
     }

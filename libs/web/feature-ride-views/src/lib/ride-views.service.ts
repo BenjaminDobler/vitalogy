@@ -7,6 +7,7 @@ import type {
   RideView,
   UpdateRideViewPayload,
 } from 'data-models';
+import { formatError } from './format-error';
 
 /**
  * Web-side ride-views client. Owns the full CRUD surface (mobile is
@@ -34,7 +35,7 @@ export class RideViewsService {
       );
       this.views.set(list);
     } catch (err) {
-      this.lastError.set(err instanceof Error ? err.message : String(err));
+      this.lastError.set(formatError(err));
     } finally {
       this.loading.set(false);
     }
