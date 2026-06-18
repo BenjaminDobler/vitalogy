@@ -10,6 +10,7 @@ import {
   type WidgetType,
 } from 'data-models';
 import type { RideWidgetData } from './ride-widget.types';
+import { LiveMapComponent } from './live-map.component';
 
 /**
  * Single source-of-truth widget renderer used by:
@@ -32,6 +33,7 @@ import type { RideWidgetData } from './ride-widget.types';
 @Component({
   selector: 'lib-ride-widget',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [LiveMapComponent],
   host: { class: 'block w-full h-full ride-widget-host' },
   template: `
     @switch (widget()) {
@@ -62,21 +64,13 @@ import type { RideWidgetData } from './ride-widget.types';
         </div>
       }
       @case ('map') {
-        <!-- TODO: live-recording map widget. For now a placeholder so
-             custom layouts that include "map" still render meaningfully. -->
-        <div class="velo-glass rounded-xl h-full w-full overflow-hidden relative">
-          <div class="absolute inset-0" style="background:
-            radial-gradient(circle at 30% 40%, rgba(195,244,0,0.05), transparent 50%),
-            linear-gradient(135deg, #1f2820 0%, #15201a 60%, #0f0f0f 100%);"></div>
-          <svg viewBox="0 0 200 100" class="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-            <path d="M10,85 Q40,30 75,55 T140,40 L185,15"
-              stroke="#c3f400" stroke-width="2.5" fill="none" stroke-linecap="round" />
-            <circle cx="10" cy="85" r="3" fill="#c3f400" />
-            <circle cx="185" cy="15" r="3" fill="none" stroke="#c3f400" stroke-width="2" />
-          </svg>
-          <div class="absolute bottom-[3cqi] left-[3cqi] right-[3cqi] flex items-center justify-between font-grotesk uppercase text-on-surface-variant" style="font-size: clamp(0.55rem, 3cqi, 0.85rem);">
-            <span>{{ formatNum(data().distanceKm, 1) }} km</span>
-            <span>↑ 245 m</span>
+        <div class="h-full w-full relative">
+          <lib-live-map [latlng]="data().routeLatLng" />
+          <!-- Telemetry overlay: distance so far, current elevation
+               gain. Sits above Leaflet so it stays readable on light
+               tile colors. -->
+          <div class="absolute bottom-[3cqi] left-[3cqi] right-[3cqi] flex items-center justify-between font-grotesk uppercase text-on-surface bg-black/55 rounded-md px-[2cqi] py-[1cqi] pointer-events-none z-[400]" style="font-size: clamp(0.55rem, 3cqi, 0.85rem);">
+            <span class="tabular-nums">{{ formatNum(data().distanceKm, 1) }} km</span>
           </div>
         </div>
       }

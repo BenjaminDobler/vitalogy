@@ -47,6 +47,7 @@ export class WidgetRendererComponent {
     const stats = this.recording.stats();
     const lap = this.recording.currentLapStats();
     const weather = this.weatherService.latest();
+    const session = this.recording.session();
     const speedKmh = latest?.speedMps != null ? latest.speedMps * 3.6 : null;
     const avgSpeedKmh =
       stats?.avgSpeedMps != null ? stats.avgSpeedMps * 3.6 : null;
@@ -60,6 +61,34 @@ export class WidgetRendererComponent {
     if (!kinds.has('HRM')) missingSensors.push('HRM');
     if (!kinds.has('CSC')) missingSensors.push('CSC');
     if (!kinds.has('POWER')) missingSensors.push('POWER');
+
+    // Build the live route trail for the map widget. Walk the session
+    // samples (every recorded second), keep only the ones that
+    // actually carry GPS, and downsample long rides so we don't ship
+    // 10k+ points to Leaflet's polyline. ~600 points keeps the trail
+    // smooth at any zoom while keeping per-tick update cost bounded.
+    const routeLatLng: [number, number][] = [];
+    if (session) {
+      const withGps: [number, number][] = [];
+      for (const s of session.samples) {
+        if (s.lat != null && s.lng != null) {
+          withGps.push([s.lat, s.lng]);
+        }
+      }
+      const TARGET = 600;
+      if (withGps.length <= TARGET) {
+        routeLatLng.push(...withGps);
+      } else {
+        const step = withGps.length / TARGET;
+        for (let i = 0; i < TARGET; i++) {
+          routeLatLng.push(withGps[Math.floor(i * step)]);
+        }
+        // Always keep the true latest point so the auto-follow camera
+        // tracks the rider's actual current position, not a sampled
+        // approximation.
+        routeLatLng.push(withGps[withGps.length - 1]);
+      }
+    }
 
     return {
       hr: latest?.hr ?? null,
@@ -80,6 +109,7 @@ export class WidgetRendererComponent {
           }
         : null,
       workoutContext: this.recording.workoutContext(),
+      routeLatLng,
       missingSensors,
     };
   });

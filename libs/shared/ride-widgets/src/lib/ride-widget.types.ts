@@ -56,6 +56,13 @@ export interface RideWidgetData {
   weather: RideWidgetWeather | null;
   workoutContext: RideWidgetWorkoutContext | null;
   /**
+   * Accumulated GPS trail for the map widget — one [lat, lng] per
+   * sample, ordered oldest → newest. Empty array means no GPS yet;
+   * mobile fills this from RecordingService.session().samples during a
+   * ride, the editor preview ships a hard-coded sample loop.
+   */
+  routeLatLng: ReadonlyArray<[number, number]>;
+  /**
    * Sensor kinds that are NOT currently connected. The widget uses
    * this to decide whether to render a "No sensor" badge in place of
    * `—`, so transient nulls (sensor connected but no signal yet) keep
@@ -81,5 +88,6 @@ export const EMPTY_RIDE_WIDGET_DATA: RideWidgetData = {
   totalDurationSec: 0,
   weather: null,
   workoutContext: null,
+  routeLatLng: [],
   missingSensors: [],
 };

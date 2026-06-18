@@ -43,6 +43,25 @@ const SAMPLE_DATA: RideWidgetData = {
     windSpeedKmh: 12,
     windDirectionDeg: 225,
   },
+  // Sample route — a short loop around the Eiffel Tower so the map
+  // widget renders a recognizable Paris street pattern in the editor.
+  // Lat/lng pairs are picked by hand to trace a short circuit a rider
+  // might do at the Champ de Mars / Quai Branly area.
+  routeLatLng: [
+    [48.8584, 2.2945],
+    [48.8588, 2.2950],
+    [48.8595, 2.2955],
+    [48.8603, 2.2962],
+    [48.8612, 2.2970],
+    [48.8615, 2.2980],
+    [48.8612, 2.2995],
+    [48.8605, 2.3000],
+    [48.8595, 2.2995],
+    [48.8588, 2.2985],
+    [48.8584, 2.2970],
+    [48.8580, 2.2960],
+    [48.8584, 2.2945],
+  ],
   // Sample workout context so the workout-coach widget renders a
   // realistic in-zone interval card in the editor preview. Conforms
   // to the minimal RideWidgetWorkoutContext shape — the shared widget
