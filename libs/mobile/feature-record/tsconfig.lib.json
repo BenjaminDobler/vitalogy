@@ -25,6 +25,9 @@
     },
     {
       "path": "../ble/tsconfig.lib.json"
+    },
+    {
+      "path": "../../shared/ride-widgets/tsconfig.lib.json"
     }
   ]
 }
