@@ -163,6 +163,20 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
               <span class="material-symbols-outlined">bluetooth_searching</span>
               <span class="font-grotesk text-label-caps uppercase">Sensors</span>
             </a>
+            <!-- Pull a fresh layout list from /api/ride-views. Useful when
+                 the rider toggles a layout on web and wants it to show up
+                 on the phone without restarting the app. -->
+            <button
+              type="button"
+              (click)="refreshRideViews(); menuOpen.set(false)"
+              [disabled]="rideViewsLoading()"
+              class="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 text-on-surface disabled:opacity-50 text-left"
+            >
+              <span class="material-symbols-outlined">refresh</span>
+              <span class="font-grotesk text-label-caps uppercase">
+                {{ rideViewsLoading() ? 'Refreshing…' : 'Refresh layouts' }}
+              </span>
+            </button>
           </nav>
           <div class="mt-auto text-xs text-on-surface-variant font-grotesk uppercase tracking-wider">
             v0.0.0 · vitalogy
@@ -172,6 +186,18 @@ const TILE_DEFS: Record<RecordTile, TileDef> = {
 
       @if (errorMsg(); as msg) {
         <p class="mx-5 mt-3 text-sm text-rose-300 font-grotesk">{{ msg }}</p>
+      }
+
+      @if (rideViewsError(); as msg) {
+        <button
+          type="button"
+          (click)="refreshRideViews()"
+          class="mx-5 mt-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-400/30 text-amber-200 font-grotesk text-xs flex items-center gap-2 text-left w-[calc(100%-2.5rem)]"
+        >
+          <span class="material-symbols-outlined text-amber-300 text-[16px]">refresh</span>
+          <span class="flex-1">Couldn't refresh layouts: {{ msg }}</span>
+          <span class="text-amber-300 uppercase tracking-wider">Retry</span>
+        </button>
       }
 
       @if (pendingUploads().length > 0) {
@@ -535,6 +561,16 @@ export class FeatureRecord {
   private readonly recordingService = inject(RecordingService);
   private readonly workoutsApi = inject(WorkoutsService);
 
+  constructor() {
+    // Re-fetch ride views every time the rider navigates to this screen.
+    // The service hydrates from localStorage on boot and (until now) only
+    // ran one refresh per app lifetime — meaning layout toggles done on
+    // web wouldn't appear on the phone unless the app process was killed
+    // and reopened. Calling refresh in the component constructor pulls
+    // a fresh list on every visit.
+    void this.rideViewsService.refresh();
+  }
+
   protected readonly workoutContext = this.recordingService.workoutContext;
   /** Workout the rider picked from the picker, applied at start. */
   private pendingWorkout: Workout | null = null;
@@ -666,6 +702,16 @@ export class FeatureRecord {
     if (fromServer.length > 0) return fromServer;
     return FALLBACK_DEFAULT_VIEWS;
   });
+
+  /** Loading + error state for the layout-refresh banner / drawer item. */
+  protected readonly rideViewsLoading = this.rideViewsService.loading;
+  protected readonly rideViewsError = this.rideViewsService.lastError;
+
+  /** Manual re-fetch trigger — called from the drawer item + the
+   *  retry button on the error banner. */
+  protected refreshRideViews(): void {
+    void this.rideViewsService.refresh();
+  }
 
   protected onCarouselScroll(e: Event): void {
     const el = e.target as HTMLElement;
