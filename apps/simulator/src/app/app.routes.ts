@@ -1,4 +1,5 @@
 import { Route } from '@angular/router';
+import { MobileActivityDetailPage } from 'feature-record';
 import { SimulatorShell } from './simulator-shell';
 
 export const appRoutes: Route[] = [
@@ -14,6 +15,23 @@ export const appRoutes: Route[] = [
         path: 'record',
         loadChildren: () =>
           import('feature-record').then((m) => m.featureRecordRoutes),
+      },
+      {
+        path: 'history',
+        loadChildren: () =>
+          import('feature-history').then((m) => m.featureHistoryRoutes),
+      },
+      // Activity detail must sit BEFORE the lazy /activities loader so
+      // this static route wins the match for /activities/:id. Mirrors
+      // apps/mobile/src/app/app.routes.ts.
+      {
+        path: 'activities/:id',
+        component: MobileActivityDetailPage,
+      },
+      {
+        path: 'activities',
+        loadChildren: () =>
+          import('feature-activities').then((m) => m.featureActivitiesRoutes),
       },
       {
         path: 'settings',

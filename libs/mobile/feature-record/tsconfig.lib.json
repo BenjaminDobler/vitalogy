@@ -28,6 +28,9 @@
     },
     {
       "path": "../../shared/ride-widgets/tsconfig.lib.json"
+    },
+    {
+      "path": "../../web/feature-activities/tsconfig.lib.json"
     }
   ]
 }

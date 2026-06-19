@@ -1,5 +1,5 @@
 import { Route } from '@angular/router';
-import { MobileActivityDetailPage } from './activity-detail-page';
+import { MobileActivityDetailPage } from 'feature-record';
 
 export const appRoutes: Route[] = [
   {

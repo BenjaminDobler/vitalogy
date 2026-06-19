@@ -1,15 +1,18 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { ActivityDetailComponent } from 'feature-activities';
-import { BottomNavComponent } from 'feature-record';
+import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 
 /**
- * Mobile wrapper around the web's ActivityDetailComponent so the
- * rider gets the bottom Ride/Activity/Settings nav while viewing a
- * ride. The "← Back to activities" link inside ActivityDetail
- * already handles going up one level.
+ * Mobile-shaped wrapper around the web's ActivityDetailComponent —
+ * gives the rider the bottom Ride/Activity/Settings nav while looking
+ * at a ride. Used by both the native mobile app and the desktop
+ * simulator so they show the same activity-detail chrome.
  *
- * The `id` input is bound by the router (withComponentInputBinding
- * is wired in apps/mobile/app.config.ts) and passed straight through.
+ * `id` is bound by the router (withComponentInputBinding is wired in
+ * both apps' app.config.ts) and passed straight through to the inner
+ * web component, along with a backLink so the ← Back arrow returns
+ * to the mobile activities list (with bottom nav) rather than the
+ * web list reused at /activities.
  */
 @Component({
   selector: 'mobile-activity-detail-page',
@@ -18,9 +21,6 @@ import { BottomNavComponent } from 'feature-record';
   template: `
     <div class="min-h-screen velo-carbon text-on-surface font-inter pb-24">
       <div class="px-5 pt-safe-6 pb-6">
-        <!-- backLink="/history" so the back arrow returns to the
-             mobile activities list (with bottom nav), not the web
-             activities list reused via the /activities route. -->
         <lib-activity-detail [id]="id()" backLink="/history" />
       </div>
       <mobile-bottom-nav />
