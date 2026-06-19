@@ -164,6 +164,21 @@ export class ActivitiesService {
     }
   }
 
+  /**
+   * Hard-delete one of the user's activities. Foreign keys in Prisma
+   * cascade Streams + Laps + Analyses (which set analyses.activityId to
+   * NULL — they're kept since they may reference the activity in their
+   * prompt history). Throws 404 if the id doesn't belong to this user.
+   */
+  async remove(userId: string, id: string): Promise<void> {
+    const row = await this.prisma.activity.findFirst({
+      where: { id, userId },
+      select: { id: true },
+    });
+    if (!row) throw new NotFoundException('Activity not found');
+    await this.prisma.activity.delete({ where: { id } });
+  }
+
   async get(userId: string, id: string): Promise<ActivityDetail> {
     const row = await this.prisma.activity.findFirst({
       where: { id, userId },

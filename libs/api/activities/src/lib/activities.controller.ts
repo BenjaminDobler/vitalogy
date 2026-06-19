@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { UserId } from 'auth';
 import type { UploadActivityRequest } from 'data-models';
 import { ActivitiesService } from './activities.service.js';
@@ -63,5 +72,20 @@ export class ActivitiesController {
   @Post()
   upload(@UserId() userId: string, @Body() req: UploadActivityRequest) {
     return this.activities.uploadRecording(userId, req);
+  }
+
+  /**
+   * Hard-delete a ride. Streams + laps + analyses cascade via FK so a
+   * single row removal cleans up everything attached. Does NOT touch
+   * Strava — the activity stays on the rider's Strava feed; we only
+   * forget about it locally.
+   */
+  @Delete(':id')
+  @HttpCode(204)
+  async remove(
+    @UserId() userId: string,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.activities.remove(userId, id);
   }
 }

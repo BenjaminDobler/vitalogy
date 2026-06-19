@@ -2,7 +2,8 @@ import { Component, computed, effect, inject, input, signal } from '@angular/cor
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
-import { RouterLink } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
+import { Router, RouterLink } from '@angular/router';
 import { RouteMapComponent, StreamChartComponent } from 'ui';
 import {
   compassCardinal,
@@ -111,28 +112,43 @@ const CHART_SPECS: ChartSpec[] = [
               </div>
             }
           </div>
-          @if (canExportToStrava(a)) {
+          <div class="shrink-0 flex items-center gap-2">
+            @if (canExportToStrava(a)) {
+              <button
+                type="button"
+                (click)="exportToStrava()"
+                [disabled]="exporting()"
+                class="px-3 py-1.5 rounded-md bg-[#fc4c02] hover:bg-[#e44402] text-white text-xs font-grotesk uppercase tracking-wider disabled:opacity-50"
+              >
+                {{ exporting() ? 'Pushing…' : 'Push to Strava' }}
+              </button>
+            } @else if (a.stravaActivityId) {
+              <a
+                [href]="'https://www.strava.com/activities/' + a.stravaActivityId"
+                target="_blank"
+                rel="noopener"
+                class="px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-on-surface text-xs font-grotesk uppercase tracking-wider"
+                title="Open on Strava"
+              >
+                On Strava ↗
+              </a>
+            }
             <button
               type="button"
-              (click)="exportToStrava()"
-              [disabled]="exporting()"
-              class="shrink-0 px-3 py-1.5 rounded-md bg-[#fc4c02] hover:bg-[#e44402] text-white text-xs font-grotesk uppercase tracking-wider disabled:opacity-50"
+              (click)="deleteActivity(a)"
+              [disabled]="deleting()"
+              class="w-9 h-9 rounded-md velo-glass hover:bg-rose-500/20 flex items-center justify-center text-on-surface-variant hover:text-rose-300 disabled:opacity-50"
+              [attr.aria-label]="deleting() ? 'Deleting…' : 'Delete activity'"
+              [title]="deleting() ? 'Deleting…' : 'Delete activity'"
             >
-              {{ exporting() ? 'Pushing…' : 'Push to Strava' }}
+              <span class="material-symbols-outlined text-[18px]">delete</span>
             </button>
-          } @else if (a.stravaActivityId) {
-            <a
-              [href]="'https://www.strava.com/activities/' + a.stravaActivityId"
-              target="_blank"
-              rel="noopener"
-              class="shrink-0 px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-on-surface text-xs font-grotesk uppercase tracking-wider"
-              title="Open on Strava"
-            >
-              On Strava ↗
-            </a>
-          }
+          </div>
         </div>
         @if (exportError(); as e) {
+          <p class="mt-2 text-xs text-rose-300">{{ e }}</p>
+        }
+        @if (deleteError(); as e) {
           <p class="mt-2 text-xs text-rose-300">{{ e }}</p>
         }
         @if (hasWeather()) {
@@ -437,6 +453,7 @@ const CHART_SPECS: ChartSpec[] = [
 export class ActivityDetailComponent {
   private readonly http = inject(HttpClient);
   private readonly settings = inject(AthleteSettingsService);
+  private readonly router = inject(Router);
 
   // Router input binding (provideRouter is configured with withComponentInputBinding()).
   readonly id = input.required<string>();
@@ -493,6 +510,35 @@ export class ActivityDetailComponent {
 
   protected readonly exporting = signal(false);
   protected readonly exportError = signal<string | null>(null);
+  protected readonly deleting = signal(false);
+  protected readonly deleteError = signal<string | null>(null);
+
+  /**
+   * Hard-delete the activity. Prompts for confirmation (delete is
+   * irreversible — DB cascade removes streams + laps + Strava import
+   * cache). On success, navigate back to whatever backLink points at
+   * so the rider lands on the activities list with the row gone.
+   */
+  protected async deleteActivity(a: ActivityDetail): Promise<void> {
+    if (this.deleting()) return;
+    const ok = confirm(
+      `Delete "${a.name}"? This removes the activity, its GPS track, laps, and all sensor streams from Vitalogy. Strava is not touched.`,
+    );
+    if (!ok) return;
+    this.deleting.set(true);
+    this.deleteError.set(null);
+    try {
+      await firstValueFrom(this.http.delete(`/api/activities/${a.id}`));
+      await this.router.navigateByUrl(this.backLink());
+    } catch (err) {
+      const e = err as { error?: { message?: string }; message?: string };
+      this.deleteError.set(
+        e?.error?.message ?? e?.message ?? 'Delete failed',
+      );
+    } finally {
+      this.deleting.set(false);
+    }
+  }
 
   /**
    * STRAVA-source activities can't be re-exported (would duplicate),
