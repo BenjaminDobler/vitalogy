@@ -82,6 +82,27 @@ interface PairCreateResponse {
           <span class="material-symbols-outlined text-[16px] mr-1 align-middle">refresh</span>
           Refresh code
         </button>
+
+        <!-- Paste fallback. Surfaces the same JSON the QR encodes so the
+             simulator (no camera) can be paired by copying this text and
+             pasting into Settings → "Can't scan? Paste the token manually". -->
+        @if (payloadText(); as txt) {
+          <details class="mt-3">
+            <summary class="text-[11px] text-on-surface-variant cursor-pointer text-center font-grotesk uppercase tracking-wider">
+              No camera? Copy the pairing token
+            </summary>
+            <div class="mt-2 flex gap-2">
+              <code class="flex-1 px-2 py-1.5 rounded bg-white/5 text-on-surface text-[10px] font-mono break-all max-h-20 overflow-y-auto">{{ txt }}</code>
+              <button
+                type="button"
+                (click)="copyPayload()"
+                class="px-3 py-1.5 rounded velo-glass hover:bg-white/10 text-xs font-grotesk uppercase tracking-wider text-on-surface"
+              >
+                {{ copied() ? 'Copied!' : 'Copy' }}
+              </button>
+            </div>
+          </details>
+        }
       </div>
     </div>
   `,
@@ -96,6 +117,25 @@ export class PairDeviceComponent implements OnDestroy {
   protected readonly qrSvg = signal<SafeHtml | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly remainingSec = signal(0);
+  /** Same JSON the QR encodes — surfaced for paste-pairing the simulator. */
+  protected readonly payloadText = signal<string | null>(null);
+  protected readonly copied = signal(false);
+  private copiedTimer?: ReturnType<typeof setTimeout>;
+
+  protected async copyPayload(): Promise<void> {
+    const txt = this.payloadText();
+    if (!txt) return;
+    try {
+      await navigator.clipboard.writeText(txt);
+      this.copied.set(true);
+      if (this.copiedTimer) clearTimeout(this.copiedTimer);
+      this.copiedTimer = setTimeout(() => this.copied.set(false), 1500);
+    } catch {
+      // Clipboard write failed (permissions / non-secure context).
+      // The text is already visible in the <code> block; user can
+      // select-and-copy manually.
+    }
+  }
 
   private tickHandle?: ReturnType<typeof setInterval>;
 
@@ -127,6 +167,7 @@ export class PairDeviceComponent implements OnDestroy {
         apiBaseUrl: window.location.origin,
         token: res.token,
       });
+      this.payloadText.set(payload);
       const svg = await QRCode.toString(payload, {
         type: 'svg',
         margin: 1,
